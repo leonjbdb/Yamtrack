@@ -10,7 +10,7 @@ from django.views.decorators.debug import sensitive_variables
 from simple_history.utils import bulk_create_with_history, bulk_update_with_history
 
 from app.mixins import disable_fetch_releases
-from app.models import Game, Item, MediaTypes, Sources, Status
+from app.models import Game, Item, MediaTypes, Sources, GameStatus
 from app.providers import igdb, services
 from .credentials import decrypt
 from .models import GameConnection, LibraryGame
@@ -45,10 +45,12 @@ def apply_library(connection, games, metadata):
                     media_type=MediaTypes.GAME,
                     defaults={"title": data["title"], "image": data["image"]},
                 )
-                status = Status.PLANNING
+                status = GameStatus.PLANNED
                 if entry.minutes:
                     status = (
-                        Status.IN_PROGRESS if entry.recent_minutes else Status.PAUSED
+                        GameStatus.IN_PROGRESS
+                        if entry.recent_minutes
+                        else GameStatus.PLAYED
                     )
                 game = (
                     Game.objects.filter(user_id=connection.user_id, item=item)
@@ -66,9 +68,9 @@ def apply_library(connection, games, metadata):
                 elif entry.minutes is not None:
                     game.progress = max(game.progress, entry.minutes)
                     if game.status in (
-                        Status.PLANNING,
-                        Status.IN_PROGRESS,
-                        Status.PAUSED,
+                        GameStatus.PLANNED,
+                        GameStatus.IN_PROGRESS,
+                        GameStatus.PLAYED,
                     ):
                         game.status = status
                     bulk_update_with_history([game], Game, ["progress", "status"])

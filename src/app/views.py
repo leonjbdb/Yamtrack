@@ -30,6 +30,8 @@ from app.models import (
     Season,
     Sources,
     Status,
+    GameStatus,
+    status_choices,
     UserMessage,
 )
 from app.providers import manual, services, tmdb
@@ -245,7 +247,7 @@ def media_list(request, username, media_type):
         "current_sort": sort_filter,
         "current_status": status_filter,
         "sort_choices": MediaSortChoices.choices,
-        "status_choices": MediaStatusChoices.choices,
+        "status_choices": status_choices(media_type, include_all=True),
         "target_user": target_user,
     }
 
@@ -601,7 +603,11 @@ def track_modal(
         )
         title = metadata["title"]
         if is_unreleased(metadata):
-            initial_data["status"] = Status.PLANNING.value
+            initial_data["status"] = (
+                GameStatus.PLANNED
+                if media_type == MediaTypes.GAME
+                else Status.PLANNING.value
+            )
         if media_type == MediaTypes.SEASON.value:
             title += f" S{season_number}"
 
@@ -952,52 +958,82 @@ def delete_history_record(request, media_type, history_id):
 
 @require_GET
 def statistics(request):
-    """Return the statistics page."""
-    start_date, end_date = stats.parse_activity_date_range(request)
+    """A lifetime collection view with a separately scoped activity timeline."""
+    from app.collection_statistics import dashboard, TYPES
 
-    # Get all user media data in a single operation
-    user_media, media_count = stats.get_user_media(
-        request.user,
-        start_date,
-        end_date,
-    )
+    kind = request.GET.get("type", "all")
+    if kind not in ["all", *TYPES]:
+        return HttpResponseBadRequest("Unknown media type")
+    period = request.GET.get("months", "12")
+    if period not in ("3", "12", "36"):
+        return HttpResponseBadRequest("Unknown activity period")
+    data = dashboard(request.user, kind, int(period))
+    if request.GET.get("export") == "csv":
+        import csv
 
-    # Calculate all statistics from the retrieved data
-    media_type_distribution = stats.get_media_type_distribution(
-        media_count,
-    )
-    score_distribution, top_rated = stats.get_score_distribution(user_media)
-    status_distribution = stats.get_status_distribution(user_media)
-    status_pie_chart_data = stats.get_status_pie_chart_data(
-        status_distribution,
-    )
-    consumption_stats = stats.get_consumption_stats(user_media, media_count)
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = (
+            'attachment; filename="collection-statistics.csv"'
+        )
+        writer = csv.writer(response)
+        writer.writerow(
+            [
+                "Type",
+                "Title",
+                "Status",
+                "Progress units",
+                "Time minutes",
+                "Rating",
+                "Recorded notes",
+                "Release year",
+            ]
+        )
 
-    total = media_count["total"]
-    in_progress_count = stats.get_status_total(
-        status_distribution,
-        Status.IN_PROGRESS.value,
-    )
-    rated_percent = (
-        round(score_distribution["total_scored"] / total * 100) if total else None
-    )
+        def safe(value):
+            text = str(value if value is not None else "")
+            return (
+                "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) else text
+            )
 
-    context = {
-        "start_date": start_date,
-        "end_date": end_date,
-        "media_count": media_count,
-        "media_type_distribution": media_type_distribution,
-        "score_distribution": score_distribution,
-        "top_rated": top_rated,
-        "status_distribution": status_distribution,
-        "status_pie_chart_data": status_pie_chart_data,
-        "consumption_stats": consumption_stats,
-        "in_progress_count": in_progress_count,
-        "rated_percent": rated_percent,
-        "date_format_values": DateFormatChoices.values,
-    }
+        for row in data["records"]:
+            writer.writerow(
+                [
+                    safe(x)
+                    for x in [
+                        row["label"],
+                        row["item__title"],
+                        row["status"],
+                        row["units"],
+                        row["minutes"],
+                        row["score"],
+                        bool(row["notes"]),
+                        row["facts"].get("year"),
+                    ]
+                ]
+            )
+        response["Cache-Control"] = "private, no-store"
+        return response
+    data.pop("records")
+    from app.tasks import refresh_collection_facts
 
-    return render(request, "app/statistics.html", context)
+    if cache.add(f"collection-facts-check:{request.user.pk}", True, timeout=3600):
+        refresh_collection_facts.delay(request.user.pk)
+    response = render(request, "app/statistics.html", {"stats": data})
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@require_POST
+def refresh_statistics(request):
+    from app.tasks import refresh_collection_facts
+
+    if cache.add(f"collection-facts-request:{request.user.pk}", True, timeout=60):
+        refresh_collection_facts.delay(request.user.pk)
+        messages.success(
+            request,
+            "Collection details are refreshing. Reload statistics shortly to see updated coverage.",
+        )
+    return redirect("statistics")
 
 
 @require_GET

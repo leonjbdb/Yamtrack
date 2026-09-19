@@ -247,7 +247,7 @@ class ConnectionTests(ConnectionFixtures, TestCase):
         obj = self.connection()
         sync_connection(obj.pk)
         game = Game.objects.get(user=self.user)
-        for status in (Status.COMPLETED, Status.DROPPED):
+        for status in ("Played", Status.DROPPED):
             with self.subTest(status=status):
                 Game.objects.filter(pk=game.pk).update(
                     status=status, notes="My notes", score=9, progress=200
@@ -256,7 +256,12 @@ class ConnectionTests(ConnectionFixtures, TestCase):
                 game.refresh_from_db()
                 self.assertEqual(
                     (game.status, game.notes, game.score, game.progress),
-                    (status, "My notes", 9, 200),
+                    (
+                        Status.IN_PROGRESS if status == "Played" else status,
+                        "My notes",
+                        9,
+                        200,
+                    ),
                 )
         library.return_value = []
         sync_connection(obj.pk)
@@ -270,7 +275,6 @@ class ConnectionTests(ConnectionFixtures, TestCase):
         self.assertEqual(game.status, Status.DROPPED)
         self.assertEqual(game.notes, "My notes")
         self.assertEqual(Game.objects.filter(user=self.user, item=game.item).count(), 1)
-
 
 
 class ProviderTests(TestCase):

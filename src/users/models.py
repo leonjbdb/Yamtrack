@@ -54,6 +54,25 @@ class MediaStatusChoices(models.TextChoices):
     DROPPED = Status.DROPPED.value, Status.DROPPED.label
 
 
+class GameFilterChoices(models.TextChoices):
+    ALL = "All", "All"
+    PLANNED = "Planned", "Planned"
+    PLAYED = "Played", "Played"
+    IN_PROGRESS = "In progress", "In Progress"
+    DROPPED = "Dropped", "Dropped"
+
+
+class CollectionFilterChoices(models.TextChoices):
+    ALL = "All", "All"
+    COMPLETED = "Completed", "Completed"
+    PLANNING = "Planning", "Planning"
+    PAUSED = "Paused", "Paused"
+    PLANNED = "Planned", "Planned"
+    PLAYED = "Played", "Played"
+    IN_PROGRESS = "In progress", "In Progress"
+    DROPPED = "Dropped", "Dropped"
+
+
 class LayoutChoices(models.TextChoices):
     """Choices for media list layout options."""
 
@@ -246,8 +265,8 @@ class User(AbstractUser):
     )
     game_status = models.CharField(
         max_length=20,
-        default=MediaStatusChoices.ALL,
-        choices=MediaStatusChoices,
+        default=GameFilterChoices.ALL,
+        choices=GameFilterChoices,
     )
 
     # Media type preferences: Books
@@ -388,8 +407,8 @@ class User(AbstractUser):
     )
     list_detail_status = models.CharField(
         max_length=20,
-        default=MediaStatusChoices.ALL,
-        choices=MediaStatusChoices,
+        default=CollectionFilterChoices.ALL,
+        choices=CollectionFilterChoices,
     )
 
     # Notification settings
@@ -515,7 +534,9 @@ class User(AbstractUser):
             ),
             models.CheckConstraint(
                 name="list_detail_status_valid",
-                condition=models.Q(list_detail_status__in=MediaStatusChoices.values),
+                condition=models.Q(
+                    list_detail_status__in=CollectionFilterChoices.values
+                ),
             ),
             models.CheckConstraint(
                 name="tv_status_valid",
@@ -539,7 +560,7 @@ class User(AbstractUser):
             ),
             models.CheckConstraint(
                 name="game_status_valid",
-                condition=models.Q(game_status__in=MediaStatusChoices.values),
+                condition=models.Q(game_status__in=GameFilterChoices.values),
             ),
             models.CheckConstraint(
                 name="book_status_valid",

@@ -44,10 +44,11 @@ class UnreleasedTrackingTests(TestCase):
                 )
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(
-                    response.context["form"]["status"].value(), Status.PLANNING
+                    response.context["form"]["status"].value(),
+                    "Planned" if media_type == "game" else Status.PLANNING,
                 )
                 self.assertIn(
-                    Status.COMPLETED,
+                    "Played" if media_type == "game" else Status.COMPLETED,
                     dict(response.context["form"].fields["status"].choices),
                 )
 

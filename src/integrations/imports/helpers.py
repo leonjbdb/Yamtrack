@@ -173,6 +173,10 @@ def bulk_create_media(bulk_media_list, user):
 
         model = apps.get_model(app_label="app", model_name=media_type)
 
+        if media_type == "game":
+            for media in bulk_media:
+                media.status = app.models.normalize_game_status(media.status)
+
         logger.info("Bulk importing %s", media_type)
 
         # Update references for seasons and episodes
@@ -208,6 +212,10 @@ def bulk_update_media(bulk_media_list, fields_by_media_type, user):
             continue
 
         model = apps.get_model(app_label="app", model_name=media_type)
+
+        if media_type == "game":
+            for media in bulk_media:
+                media.status = app.models.normalize_game_status(media.status)
 
         logger.info("Bulk updating %s", media_type)
         bulk_update_with_history(

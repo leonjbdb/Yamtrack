@@ -188,40 +188,21 @@ class StatisticsViewTests(TestCase):
         self.client.login(**self.credentials)
 
     def test_statistics_view_default_date_range(self):
-        """Test the statistics view with default date range (last year)."""
-        # Call the view
+        """Lifetime cards and a twelve-month activity window are independent."""
         response = self.client.get(reverse("statistics"))
-
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/statistics.html")
-
-        self.assertIn("media_count", response.context)
-        self.assertIn("media_type_distribution", response.context)
-        self.assertIn("score_distribution", response.context)
-        self.assertIn("status_distribution", response.context)
-        self.assertIn("status_pie_chart_data", response.context)
-        self.assertIn("consumption_stats", response.context)
-        self.assertIn("in_progress_count", response.context)
-        self.assertIn("rated_percent", response.context)
+        self.assertEqual(response.context["stats"]["period"], 12)
+        self.assertEqual(len(response.context["stats"]["summaries"]), 9)
 
     def test_statistics_view_custom_date_range(self):
-        """Test the statistics view with custom date range."""
-        start_date = "2023-01-01"
-        end_date = "2023-12-31"
-
-        # Call the view with custom date range
         response = self.client.get(
-            reverse("statistics") + f"?start-date={start_date}&end-date={end_date}",
+            reverse("statistics"), {"months": "3", "type": "book"}
         )
-
         self.assertEqual(response.status_code, 200)
-
-        self.assertIn("media_count", response.context)
-        self.assertIn("media_type_distribution", response.context)
-        self.assertIn("score_distribution", response.context)
-        self.assertIn("status_distribution", response.context)
-        self.assertIn("status_pie_chart_data", response.context)
-        self.assertIn("consumption_stats", response.context)
+        self.assertEqual(response.context["stats"]["period"], 3)
+        self.assertEqual(response.context["stats"]["kind"], "book")
+        self.assertEqual(len(response.context["stats"]["chart"]["months"]), 3)
 
     def test_statistics_view_renders_consumption(self):
         """The consumption section renders when the user has consumed media."""
@@ -249,8 +230,8 @@ class StatisticsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Consumption")
-        self.assertContains(response, "Anime episodes watched")
+        self.assertContains(response, "Every kind of obsession.")
+        self.assertContains(response, "episodes watched")
         self.assertNotContains(response, "Media Timeline")
 
     def test_statistics_view_summary_metrics(self):
@@ -286,27 +267,12 @@ class StatisticsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["in_progress_count"], 2)
+        self.assertEqual(response.context["stats"]["active"], 2)
         # 1 of 4 items is scored -> 25%.
-        self.assertEqual(response.context["rated_percent"], 25)
-        self.assertContains(response, "In Progress")
-        self.assertContains(response, "% Rated")
+        self.assertEqual(response.context["stats"]["rated"], 1)
+        self.assertContains(response, "in progress")
+        self.assertContains(response, "Your critical eye")
 
     def test_statistics_view_invalid_date_format(self):
-        """Test the statistics view with invalid date format."""
-        start_date = "01/01/2023"  # MM/DD/YYYY instead of YYYY-MM-DD
-        end_date = "2023/12/31"
-
-        # Call the view with invalid date format
-        response = self.client.get(
-            reverse("statistics") + f"?start-date={start_date}&end-date={end_date}",
-        )
-
-        self.assertEqual(response.status_code, 200)
-
-        date_is_none = (
-            response.context["start_date"] is None
-            and response.context["end_date"] is None
-        )
-
-        self.assertTrue(date_is_none)
+        response = self.client.get(reverse("statistics"), {"months": "forever"})
+        self.assertEqual(response.status_code, 400)

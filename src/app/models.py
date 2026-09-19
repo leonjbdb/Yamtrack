@@ -229,7 +229,11 @@ class MediaManager(models.Manager):
         queryset = model.objects.filter(user=user.id)
 
         if status_filter != users.models.MediaStatusChoices.ALL:
-            queryset = queryset.filter(status=status_filter)
+            queryset = queryset.filter(
+                status=normalize_game_status(status_filter)
+                if media_type == MediaTypes.GAME
+                else status_filter
+            )
 
         if search:
             search_filter = Q(item__title__icontains=search)
@@ -776,6 +780,36 @@ class Status(models.TextChoices):
     PLANNING = "Planning", "Planning"
     PAUSED = "Paused", "Paused"
     DROPPED = "Dropped", "Dropped"
+
+
+class GameStatus(models.TextChoices):
+    PLANNED = "Planned", "Planned"
+    PLAYED = "Played", "Played"
+    IN_PROGRESS = "In progress", "In Progress"
+    DROPPED = "Dropped", "Dropped"
+
+
+def normalize_game_status(status):
+    return {"Completed": "Played", "Paused": "Played", "Planning": "Planned"}.get(
+        status, status
+    )
+
+
+def status_choices(media_type, include_all=False):
+    choices = GameStatus.choices if media_type == MediaTypes.GAME else Status.choices
+    return [("All", "All"), *choices] if include_all else choices
+
+
+class CollectionFacts(models.Model):
+    """Public catalogue facts persisted for fast, reproducible collection statistics."""
+
+    item = models.OneToOneField(
+        Item, on_delete=models.CASCADE, related_name="collection_facts"
+    )
+    data = models.JSONField(default=dict)
+    fetched_at = models.DateTimeField(null=True)
+    attempted_at = models.DateTimeField(null=True)
+    error = models.BooleanField(default=False)
 
 
 class UserMessageLevel(models.TextChoices):
@@ -1892,8 +1926,45 @@ class Movie(Media):
     tracker = FieldTracker()
 
 
+class GameQuerySet(models.QuerySet):
+    def bulk_create(self, objs, *args, **kwargs):
+        for obj in objs:
+            obj.status = normalize_game_status(obj.status)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def bulk_update(self, objs, fields, *args, **kwargs):
+        for obj in objs:
+            obj.status = normalize_game_status(obj.status)
+        return super().bulk_update(objs, fields, *args, **kwargs)
+
+
 class Game(Media):
     """Model for games."""
+
+    objects = GameQuerySet.as_manager()
+
+    status = models.CharField(
+        max_length=20, choices=GameStatus, default=GameStatus.PLANNED
+    )
+
+    class Meta(Media.Meta):
+        abstract = False
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(status__in=GameStatus.values), name="game_status_allowed"
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        self.status = normalize_game_status(self.status)
+        super().save(*args, **kwargs)
+
+    def process_progress(self):
+        # Playtime has no completion threshold: Played does not mean finished.
+        self.progress = max(0, self.progress)
+
+    def process_status(self):
+        self.item.fetch_releases(delay=True)
 
     tracker = FieldTracker()
 

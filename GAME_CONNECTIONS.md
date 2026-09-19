@@ -52,7 +52,8 @@ connection database ID. Inactive users are excluded. Remote failures preserve
 the last successful library and show a safe error to its owner.
 
 Steam playtime updates do not reduce manually recorded time. Ratings, notes,
-and completed/dropped status are preserved. Missing store games never delete
+and Dropped status are preserved. Other games use Planned (no recorded time),
+In Progress (played in the last two weeks), or Played (older playtime). Missing store games never delete
 tracked Yamtrack games. IGDB external IDs resolve catalogue entries; unmatched
 games remain visible only to their owner in the connection page and are retried
 at the next sync. Provider response validation and full fetch happen before
@@ -102,3 +103,16 @@ The Account settings page is hidden in this fork. Settings opens Preferences,
 and both GET and POST requests to the old account URL redirect there without
 changing local usernames, email addresses or passwords. Account identity remains
 managed by the configured identity provider.
+
+## Game status migration
+
+Game statuses are Planned, Played, In Progress and Dropped. Upgrading merges
+Completed and Paused into Played, and renames Planning to Planned, including
+historical rows and saved game filters. Ratings, notes, dates and minutes are
+preserved. Other media types keep their existing statuses. A database constraint
+prevents legacy states from reappearing; legacy imports are normalized before
+writing. Playtime has no automatic completion threshold.
+
+The merge cannot reconstruct which Played games used to be Completed versus
+Paused. Take an encrypted database backup before upgrading; rollback to an old
+image requires restoring that backup rather than reversing the merge.

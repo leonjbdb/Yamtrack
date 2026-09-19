@@ -265,6 +265,9 @@ STATUS_CONFIG = {
     },
 }
 
+STATUS_CONFIG["Played"] = STATUS_CONFIG[Status.COMPLETED.value]
+STATUS_CONFIG["Planned"] = STATUS_CONFIG[Status.PLANNING.value]
+
 # --- Journal Accent Configuration ---
 # The journal badge is a filled circle with a white icon, so it uses each
 # status's stronger background and its icon from STATUS_CONFIG. Only the

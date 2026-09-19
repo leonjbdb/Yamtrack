@@ -12,7 +12,13 @@ from app.models import Item, MediaManager, MediaTypes
 from app.providers import services
 from lists.forms import CustomListForm
 from lists.models import CustomList, CustomListItem
-from users.models import ListDetailSortChoices, ListSortChoices, MediaStatusChoices
+from users.models import (
+    ListDetailSortChoices,
+    ListSortChoices,
+    MediaStatusChoices,
+    CollectionFilterChoices,
+)
+from app.models import status_choices
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +187,9 @@ def list_detail(request, list_id):
         "current_sort": params["sort_by"],
         "current_status": params["status_filter"] or MediaStatusChoices.ALL,
         "sort_choices": ListDetailSortChoices.choices,
-        "status_choices": MediaStatusChoices.choices,
+        "status_choices": status_choices(params["media_type"], include_all=True)
+        if params["media_type"] != "all"
+        else CollectionFilterChoices.choices,
     }
 
     # Additional context for full page render. Soft-navigation body swaps (e.g.
