@@ -1,0 +1,54 @@
+{% extends "users/base.html" %}
+{% block settings_content %}
+<div class="space-y-6">
+  <div>
+    <h2 class="text-2xl font-bold">Game connections</h2>
+    <p class="text-gray-400 mt-2">Sync your own library, including private purchases. One account per service.</p>
+    <p class="text-gray-400 mt-2 text-sm">API keys are encrypted and never displayed after saving. Only connect accounts you own. You can disconnect at any time.</p>
+  </div>
+  {% for card in cards %}
+  <section class="bg-[#2a2f35] p-6 rounded-lg space-y-4">
+    <h3 class="text-xl font-bold">{{ card.label }}</h3>
+    {% if card.connection %}
+      <p>Connected account: {{ card.connection.external_id }}</p>
+      <p class="text-gray-400">{{ card.connection.status }}</p>
+      <p class="text-gray-400 text-sm">Last successful sync: {{ card.connection.last_success|default:"Not yet synced" }}</p>
+      <p class="text-gray-400 text-sm">{% if card.connection.enabled %}Automatic sync: daily{% else %}Sync paused{% endif %}</p>
+      <form method="post" action="{% url 'game_connections:action' card.provider %}" class="flex gap-4 flex-wrap">
+        {% csrf_token %}
+        {% if card.connection.enabled %}<button name="action" value="sync" class="px-4 py-2 bg-indigo-600 rounded-lg">Sync now</button>{% endif %}
+        <button name="action" value="toggle" class="px-4 py-2 bg-[#39404b] rounded-lg">{% if card.connection.enabled %}Pause sync{% else %}Resume sync{% endif %}</button>
+        <button name="action" value="disconnect" class="px-4 py-2 bg-[#39404b] rounded-lg">Disconnect</button>
+      </form>
+      <p class="text-gray-400 text-sm">Disconnect removes the stored key and connection. Games already tracked in Yamtrack remain. Reconnect to replace a key.</p>
+      {% if card.unmatched %}
+      <details><summary class="cursor-pointer">Games without an IGDB match (up to 100 shown)</summary>
+        <ul class="mt-2 space-y-1">{% for game in card.unmatched %}<li>{{ game.title }}</li>{% endfor %}</ul>
+        <p class="text-gray-400 text-sm mt-2">These stay in your connection library and are retried on the next sync.</p>
+      </details>
+      {% endif %}
+    {% else %}
+      {% if card.provider == 'steam' %}
+        <p class="text-gray-400">Verify your Steam account, then add its own Web API key. Your game library can remain private.</p>
+        {% if not verified_steam %}
+          <form method="post" action="{% url 'game_connections:steam_start' %}">{% csrf_token %}<button class="px-4 py-2 bg-indigo-600 rounded-lg">Connect Steam</button></form>
+        {% else %}<p>Verified Steam account: {{ verified_steam }}</p>{% endif %}
+        <p class="text-gray-400 text-sm">Create or copy your key from <a class="text-indigo-400" href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener noreferrer">Steam Web API settings</a>. Use the same Steam account you verified.</p>
+      {% else %}
+        <p class="text-gray-400">Sync games you purchased or claimed on itch.io. Your API key identifies your account and accesses its private purchase library. Playtime is not supplied by itch.io.</p>
+        <p class="text-gray-400 text-sm">Copy a personal key from <a class="text-indigo-400" href="https://itch.io/user/settings/api-keys" target="_blank" rel="noopener noreferrer">itch.io API settings</a>. Claimed games are included; unclaimed bundle entries are not.</p>
+      {% endif %}
+      {% if card.provider != 'steam' or verified_steam %}
+      <form method="post" action="{% url 'game_connections:connect' card.provider %}" class="space-y-3">
+        {% csrf_token %}
+        <label for="key-{{ card.provider }}" class="block text-sm">Personal {{ card.label }} API key</label>
+        <input id="key-{{ card.provider }}" name="api_key" type="password" autocomplete="new-password" maxlength="512" required class="w-full px-3 py-2 bg-[#39404b] border border-gray-600 rounded-lg">
+        <button class="px-4 py-2 bg-indigo-600 rounded-lg">Verify library access and save</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </section>
+  {% endfor %}
+  <p class="text-gray-400 text-sm">Sync adds matched games and updates Steam playtime. Existing ratings, notes and completed/dropped statuses are preserved. Removing games from a store never deletes your tracking history.</p>
+</div>
+{% endblock settings_content %}

@@ -1,0 +1,8 @@
+FROM ghcr.io/fuzzygrim/yamtrack:0.26.3@sha256:78497b454b2b52d3b1062f6fd238351d714cff0895db4369e49ace36f4622e75
+ARG VERSION=hearth
+ARG REVISION
+LABEL org.opencontainers.image.source="https://github.com/leonjbdb/Yamtrack" \
+      org.opencontainers.image.revision="${REVISION}"
+ENV VERSION=${VERSION}
+COPY src /yamtrack
+RUN python manage.py collectstatic --noinput

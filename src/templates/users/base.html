@@ -39,6 +39,11 @@
               <span>Integrations</span>
             </a>
 
+            {% url 'game_connections:index' as game_connections_url %}
+            <a href="{{ game_connections_url }}" class="w-full flex items-center space-x-3 px-2 py-2 rounded-md text-sm {% if request.path == game_connections_url %}bg-[#39404b] text-white{% else %}text-gray-400 hover:text-white{% endif %}">
+              {% include "app/icons/database.svg" with classes="w-5 h-5" %}<span>Game connections</span>
+            </a>
+
             {% url 'import_data' as import_url %}
             <a href="{{ import_url }}"
                class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == import_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">

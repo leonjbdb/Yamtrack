@@ -1,0 +1,48 @@
+name: Hearth game connections
+on:
+  push:
+    branches: [codex/private-game-connections]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.12'
+      - run: uv sync --locked --no-default-groups --group test
+      - run: uv run src/manage.py test game_connections --noinput
+        env:
+          DJANGO_SETTINGS_MODULE: game_connections.test_settings
+      - run: uv run src/manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_SETTINGS_MODULE: game_connections.test_settings
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        id: build
+        with:
+          context: .
+          file: Dockerfile.hearth
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/leonjbdb/yamtrack:hearth-${{ github.sha }}
+          build-args: |
+            VERSION=0.26.3-hearth-${{ github.sha }}
+            REVISION=${{ github.sha }}
+      - run: echo 'Image digest ${{ steps.build.outputs.digest }}' >> "$GITHUB_STEP_SUMMARY"

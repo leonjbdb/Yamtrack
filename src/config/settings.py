@@ -109,6 +109,7 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Application definition
 
 INSTALLED_APPS = [
+    "game_connections",
     "django.contrib.auth",
     "django.contrib.admin",
     "django.contrib.contenttypes",
@@ -654,3 +655,10 @@ if not REGISTRATION:
 REDIRECT_LOGIN_TO_SSO = config("REDIRECT_LOGIN_TO_SSO", default=False, cast=bool)
 
 SESSION_COOKIE_AGE = config("SESSION_COOKIE_AGE", default=60 * 60 * 24 * 14, cast=int)
+
+# Independent encryption key for each user's game-service credentials.
+GAME_CONNECTIONS_KEY = config("GAME_CONNECTIONS_KEY", default="")
+CELERY_BEAT_SCHEDULE["sync-private-game-libraries"] = {
+    "task": "game_connections.tasks.sync_due_connections",
+    "schedule": crontab(minute=23),
+}

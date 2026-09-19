@@ -1,3 +1,5 @@
+> Hearth fork: [private Steam and itch.io game connections](GAME_CONNECTIONS.md), based on Yamtrack 0.26.3.
+
 <!-- --8<-- [start:docs-index-intro] -->
 
 # Yamtrack

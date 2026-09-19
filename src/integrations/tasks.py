@@ -144,7 +144,15 @@ def import_hltb(file, user_id, mode):
 @shared_task(name="Import from Steam")
 def import_steam(username, user_id, mode):
     """Celery task for importing game data from Steam."""
-    return import_media(steam.importer, username, user_id, mode)
+    from game_connections.models import GameConnection
+    from game_connections.tasks import sync_game_connection
+
+    connection = GameConnection.objects.filter(
+        user_id=user_id, provider="steam"
+    ).first()
+    if connection:
+        sync_game_connection.delay(connection.pk)
+    return "Steam imports now use Game connections in Settings."
 
 
 @shared_task(name="Import from IMDB")
