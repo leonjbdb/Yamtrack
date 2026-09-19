@@ -5,19 +5,12 @@
   <div class="mx-auto max-w-6xl">
     <div class="mb-8">
       <h1 class="text-3xl font-bold">Settings</h1>
-      <p class="text-gray-400 mt-2 text-sm">Configure your account and preferences</p>
+      <p class="text-gray-400 mt-2 text-sm">Configure your preferences and integrations</p>
     </div>
     <div class="flex flex-col md:flex-row gap-8">
       <div class="md:w-64 shrink-0">
         <div class="bg-[#2a2f35] rounded-lg overflow-hidden sticky top-20">
           <nav class="p-2 space-y-1">
-            {% url 'account' as account_url %}
-            <a href="{{ account_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == account_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
-              {% include "app/icons/person.svg" with classes="w-5 h-5" %}
-              <span>Account</span>
-            </a>
-
             {% url 'preferences' as preferences_url %}
             <a href="{{ preferences_url }}"
                class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == preferences_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">

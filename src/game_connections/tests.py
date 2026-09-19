@@ -247,19 +247,30 @@ class ConnectionTests(ConnectionFixtures, TestCase):
         obj = self.connection()
         sync_connection(obj.pk)
         game = Game.objects.get(user=self.user)
-        Game.objects.filter(pk=game.pk).update(
-            status=Status.COMPLETED, notes="My notes", score=9, progress=200
-        )
-        sync_connection(obj.pk)
-        game.refresh_from_db()
-        self.assertEqual(
-            (game.status, game.notes, game.score, game.progress),
-            (Status.COMPLETED, "My notes", 9, 200),
-        )
+        for status in (Status.COMPLETED, Status.DROPPED):
+            with self.subTest(status=status):
+                Game.objects.filter(pk=game.pk).update(
+                    status=status, notes="My notes", score=9, progress=200
+                )
+                sync_connection(obj.pk)
+                game.refresh_from_db()
+                self.assertEqual(
+                    (game.status, game.notes, game.score, game.progress),
+                    (status, "My notes", 9, 200),
+                )
         library.return_value = []
         sync_connection(obj.pk)
-        self.assertTrue(Game.objects.filter(pk=game.pk).exists())
+        game.refresh_from_db()
+        self.assertEqual(game.status, Status.DROPPED)
         self.assertFalse(obj.library.exists())
+        library.return_value = [OwnedGame("10", "A game", 240, 30)]
+        sync_connection(obj.pk)
+        self.client.post("/connections/steam/action", {"action": "disconnect"})
+        game.refresh_from_db()
+        self.assertEqual(game.status, Status.DROPPED)
+        self.assertEqual(game.notes, "My notes")
+        self.assertEqual(Game.objects.filter(user=self.user, item=game.item).count(), 1)
+
 
 
 class ProviderTests(TestCase):

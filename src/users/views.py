@@ -3,7 +3,6 @@ import logging
 import apprise
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import update_session_auth_hash
 from django.core.cache import cache
 from django.db import IntegrityError
 from django.db.models import Q
@@ -14,7 +13,7 @@ from django_celery_beat.models import PeriodicTask
 
 from app.models import Item, MediaTypes
 from app.providers import tmdb
-from users.forms import NotificationSettingsForm, PasswordChangeForm, UserUpdateForm
+from users.forms import NotificationSettingsForm
 from users.models import (
     WATCH_PROVIDER_REGION_UNSET,
     DateFormatChoices,
@@ -28,60 +27,8 @@ logger = logging.getLogger(__name__)
 
 @require_http_methods(["GET", "POST"])
 def account(request):
-    """Update the user's account and import/export data."""
-    user_form = UserUpdateForm(instance=request.user)
-    password_form = PasswordChangeForm(user=request.user)
-
-    if request.method == "POST":
-        # Handle username update
-        if "username" in request.POST:
-            user_form = UserUpdateForm(request.POST, instance=request.user)
-
-            if user_form.is_valid():
-                user_form.save()
-                messages.success(request, "Your profile has been updated!")
-                logger.info(
-                    "Successful profile change for user: %s",
-                    request.user.username,
-                )
-                return redirect("account")
-            logger.warning(
-                "Failed profile change for user: %s - %s",
-                request.user.username,
-                list(user_form.errors.keys()),
-            )
-
-        # Handle password update
-        elif any(
-            key in request.POST
-            for key in ["old_password", "new_password1", "new_password2"]
-        ):
-            password_form = PasswordChangeForm(user=request.user, data=request.POST)
-
-            if password_form.is_valid():
-                user = password_form.save()
-                update_session_auth_hash(
-                    request,
-                    user,
-                )
-                messages.success(request, "Your password has been updated!")
-                logger.info(
-                    "Successful password change for user: %s",
-                    request.user.username,
-                )
-                return redirect("account")
-            logger.warning(
-                "Failed password change for user: %s - %s",
-                request.user.username,
-                list(password_form.errors.keys()),
-            )
-
-    context = {
-        "user_form": user_form,
-        "password_form": password_form,
-    }
-
-    return render(request, "users/account.html", context)
+    """Account details are managed by the identity provider."""
+    return redirect("preferences")
 
 
 @require_http_methods(["GET", "POST"])

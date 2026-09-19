@@ -25,7 +25,7 @@ class DemoProfileTests(TestCase):
             },
         )
         self.assertEqual(auth.get_user(self.client).username, "testuser")
-        self.assertContains(response, "not allowed for the demo account")
+        self.assertRedirects(response, reverse("preferences"))
 
     def test_demo_user_cannot_change_password(self):
         """Test that demo users cannot change their password."""
@@ -41,4 +41,4 @@ class DemoProfileTests(TestCase):
             },
         )
         self.assertTrue(auth.get_user(self.client).check_password("testpass123"))
-        self.assertContains(response, "not allowed for the demo account")
+        self.assertRedirects(response, reverse("preferences"))

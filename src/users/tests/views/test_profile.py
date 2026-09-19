@@ -1,51 +1,30 @@
-from django.contrib import auth
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
 
 class Profile(TestCase):
-    """Test profile page."""
+    """The Hearth fork delegates account management to its identity provider."""
 
     def setUp(self):
-        """Create user for the tests."""
-        self.credentials = {"username": "test", "password": "12345"}
-        self.user = get_user_model().objects.create_user(**self.credentials)
-        self.client.login(**self.credentials)
+        self.user = get_user_model().objects.create_user(username="test")
+        self.client.force_login(self.user)
 
-    def test_change_username(self):
-        """Test changing username."""
-        self.assertEqual(auth.get_user(self.client).username, "test")
-        self.client.post(
-            reverse("account"),
-            {
-                "username": "new_test",
-            },
-        )
-        self.assertEqual(auth.get_user(self.client).username, "new_test")
+    def test_account_page_redirects_without_local_account_controls(self):
+        response = self.client.get(reverse("account"), follow=True)
+        self.assertRedirects(response, reverse("preferences"))
+        self.assertNotContains(response, 'href="/settings/account"')
+        self.assertNotContains(response, 'name="old_password"')
 
-    def test_change_password(self):
-        """Test changing password."""
-        self.assertEqual(auth.get_user(self.client).check_password("12345"), True)
-        self.client.post(
-            reverse("account"),
-            {
-                "old_password": "12345",
-                "new_password1": "*FNoZN64",
-                "new_password2": "*FNoZN64",
-            },
-        )
-        self.assertEqual(auth.get_user(self.client).check_password("*FNoZN64"), True)
-
-    def test_invalid_password_change(self):
-        """Test password change with incorrect old password."""
-        response = self.client.post(
-            reverse("account"),
-            {
-                "old_password": "wrongpass",
-                "new_password1": "newpass123",
-                "new_password2": "newpass123",
-            },
-        )
-        self.assertTrue(auth.get_user(self.client).check_password("12345"))
-        self.assertContains(response, "Your old password was entered incorrectly")
+    def test_account_post_cannot_change_identity_or_password(self):
+        original_password = self.user.password
+        for payload in (
+            {"username": "new_test", "email": "new@example.com"},
+            {"new_password1": "changed-password", "new_password2": "changed-password"},
+        ):
+            response = self.client.post(reverse("account"), payload)
+            self.assertRedirects(response, reverse("preferences"))
+            self.user.refresh_from_db()
+            self.assertEqual(self.user.username, "test")
+            self.assertEqual(self.user.email, "")
+            self.assertEqual(self.user.password, original_password)

@@ -95,3 +95,10 @@ applies to movies, TV, seasons, games, anime, manga, books, comics and board
 games. Partial dates are compared at their known precision. Released titles and
 unknown dates without an upcoming status retain upstream behavior; existing
 tracking entries and explicit status selections are not overwritten.
+
+## Account settings
+
+The Account settings page is hidden in this fork. Settings opens Preferences,
+and both GET and POST requests to the old account URL redirect there without
+changing local usernames, email addresses or passwords. Account identity remains
+managed by the configured identity provider.
