@@ -37,6 +37,9 @@ a collection ledger, ratings and catalogue sources. Games add playtime bands
 and supported platforms; reading/anime views add progress-percentage bands for
 titles with a known length. Reading and board-game views lead with their native
 units and rank their greatest progress rather than presenting empty hour totals.
+Individual game views show Played counts and median time per catalogue game
+(including unplayed titles); viewing collections show watch counts and runtime
+coverage. Single-type views omit the uninformative one-category composition pie.
 
 Collection additions measure when entries entered Yamtrack, including imports.
 Monthly consumption uses dated movie/episode watches and positive changes after

@@ -3,6 +3,7 @@
 import re
 from collections import Counter
 from datetime import timedelta
+from statistics import median
 
 from django.apps import apps
 from django.urls import reverse
@@ -531,6 +532,19 @@ def dashboard(user, kind="all", months=12):
         "native": native,
         "native_value": sum(s["units"] for s in selected),
         "native_unit": UNITS.get(kind, ""),
+        "played": sum(s["statuses"].get("Played", 0) for s in selected),
+        "median_playtime": hour_text(
+            median([r["minutes"] for r in primary_records if r["kind"] == "game"])
+        )
+        if any(r["kind"] == "game" for r in primary_records)
+        else "0h 00m",
+        "runtime_coverage": round(
+            sum(s["known"] for s in selected)
+            / sum(s["possible"] for s in selected)
+            * 100
+        )
+        if sum(s["possible"] for s in selected)
+        else None,
         "finished": sum(s["statuses"].get("Completed", 0) for s in selected),
         "period": months,
         "title": LABELS.get(kind, "Every collection"),

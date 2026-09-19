@@ -19,13 +19,13 @@
     }
     new Chart(canvas,{type,data:chartData,options:{...base,...overrides}});
   }
-  const bars=(labels,values,color=purple)=>({labels,datasets:[{label:'Titles',data:values,backgroundColor:color,borderRadius:4,maxBarThickness:24}]});
+  const bars=(labels,values,color=purple,label='Titles')=>({labels,datasets:[{label,data:values,backgroundColor:color,borderRadius:4,maxBarThickness:24}]});
   draw('collectionMix','doughnut',{labels:data.mix.labels,datasets:[{data:data.mix.values,backgroundColor:data.mix.colors,borderWidth:0,hoverOffset:6}]},{scales:{},cutout:'76%'});
   draw('collectionStatus','bar',data.status,{indexAxis:'y',scales:{x:{stacked:true,grid:{color:grid},ticks:{precision:0}},y:{stacked:true,grid:{display:false}}}});
-  draw('collectionTime','bar',bars(data.time.labels,data.time.values,data.time.colors),{indexAxis:'y',plugins:{...base.plugins,legend:{display:false}},scales:{x:{beginAtZero:true,grid:{color:grid},title:{display:true,text:'Hours'}},y:{grid:{display:false}}}});
+  draw('collectionTime','bar',bars(data.time.labels,data.time.values,data.time.colors,'Hours'),{indexAxis:'y',plugins:{...base.plugins,legend:{display:false}},scales:{x:{beginAtZero:true,grid:{color:grid},title:{display:true,text:'Hours'}},y:{grid:{display:false}}}});
   draw('collectionGrowth','bar',{labels:data.months,datasets:data.growth},{scales:{x:{stacked:true,grid:{display:false},ticks:{maxTicksLimit:12}},y:{stacked:true,beginAtZero:true,grid:{color:grid},ticks:{precision:0}}}});
   draw('recordedTime','line',{labels:data.months,datasets:data.recordedTime.map(d=>({...d,pointRadius:2,tension:.3,borderWidth:2}))},{interaction:{mode:'index',intersect:false},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:12}},y:{beginAtZero:true,grid:{color:grid},title:{display:true,text:'Hours recorded'}}}});
-  if(data.progress) draw('unitProgress','bar',bars(data.progress.labels,data.progress.values.map(n=>data.progress.unit==='hours played'?n/60:n),'#75cdb2'),{plugins:{...base.plugins,legend:{display:false}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:12}},y:{beginAtZero:true,grid:{color:grid},title:{display:true,text:data.progress.unit}}}});
+  if(data.progress) draw('unitProgress','bar',bars(data.progress.labels,data.progress.values.map(n=>data.progress.unit==='hours played'?n/60:n),'#75cdb2',data.progress.unit),{plugins:{...base.plugins,legend:{display:false}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:12}},y:{beginAtZero:true,grid:{color:grid},title:{display:true,text:data.progress.unit}}}});
   for(const [id,values,horizontal] of [['collectionInvestment',data.investment,false],['collectionPlatforms',data.platforms,true],['collectionDepth',data.depth,false],['collectionGenres',data.genres,true],['collectionEras',data.eras,false],['collectionSources',data.sources,true],['collectionRatings',data.ratings,false]]){
     draw(id,'bar',bars(Object.keys(values),Object.values(values),id==='collectionGenres'?'#b89ae0':id==='collectionRatings'?'#d7b574':'#75bcb8'),{indexAxis:horizontal?'y':'x',plugins:{...base.plugins,legend:{display:false}},scales:{x:{grid:{display:horizontal,color:grid},ticks:{precision:0}},y:{beginAtZero:true,grid:{display:!horizontal,color:grid},ticks:{precision:0}}}});
   }
