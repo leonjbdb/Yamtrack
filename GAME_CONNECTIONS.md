@@ -86,3 +86,12 @@ A public profile feed or publisher-only API does not satisfy private library
 access. Additional providers require an authenticated personal-library API and
 an owner-account acceptance test; browser cookies/password scraping is not part
 of this implementation.
+
+## Tracking upcoming releases
+
+New tracking forms select Planning when provider metadata identifies a future
+release/publication/air date or an explicit upcoming/production status. This
+applies to movies, TV, seasons, games, anime, manga, books, comics and board
+games. Partial dates are compared at their known precision. Released titles and
+unknown dates without an upcoming status retain upstream behavior; existing
+tracking entries and explicit status selections are not overwritten.

@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: uv sync --locked --no-default-groups --group test
-      - run: uv run src/manage.py test game_connections --noinput
+      - run: uv run src/manage.py test game_connections app.tests.views.test_unreleased_tracking --noinput
         env:
           DJANGO_SETTINGS_MODULE: game_connections.test_settings
       - run: uv run src/manage.py makemigrations --check --dry-run

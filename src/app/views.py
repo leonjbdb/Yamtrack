@@ -20,6 +20,7 @@ from app import config, helpers, history_processor
 from app import home as home_helpers
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
+from app.release_status import is_unreleased
 from app.models import (
     TV,
     BasicMedia,
@@ -592,12 +593,15 @@ def track_modal(
         if media_type == MediaTypes.GAME.value:
             initial_data["progress"] = helpers.minutes_to_hhmm(media.progress)
     else:
-        title = services.get_media_metadata(
+        metadata = services.get_media_metadata(
             media_type,
             media_id,
             source,
             [season_number],
-        )["title"]
+        )
+        title = metadata["title"]
+        if is_unreleased(metadata):
+            initial_data["status"] = Status.PLANNING.value
         if media_type == MediaTypes.SEASON.value:
             title += f" S{season_number}"
 
