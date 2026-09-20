@@ -15,7 +15,7 @@ from app.models import MediaTypes
 from app.providers import services
 from app.discovery import providers
 from app.discovery.catalogue import remember, close_matches, link_with_query, normalize
-from app.discovery.ranking import merge_ranked, score
+from app.discovery.ranking import matched_tokens, merge_ranked, score
 
 CATEGORIES = [
     ("all", "All Search"),
@@ -83,6 +83,32 @@ def fetch_category(category, query, page, source):
 
 def candidates(category, query, rows, source, kinds):
     indexed = close_matches(query, kinds, [source] if source else None, limit=80)
+    # Search corrected words as well as the literal query. An indexed original
+    # must lead to unindexed sequels, not stop retrieval at the first good hit.
+    if category != "networks":
+        probes = []
+        for row in merge_ranked(query, rows, indexed):
+            match = matched_tokens(query, row["name"])
+            if match and match[0] and match[1] != normalize(query):
+                target_category = category
+                if category == "all":
+                    target_category = {
+                        "person": "people",
+                        "company": "game_studios"
+                        if row["source"] == "igdb"
+                        else "studios",
+                    }.get(row["kind"], row["kind"])
+                if target_category == "network":
+                    continue
+                probe = (target_category, match[1], row["source"])
+                if probe not in probes:
+                    probes.append(probe)
+            if len(probes) == 2:
+                break
+        for target_category, probe, target_source in probes:
+            extra = fetch_category(target_category, probe, 1, target_source)["results"]
+            remember(extra)
+            indexed.extend(row for row in extra if score(query, row) >= 400)
     # Ask for a short public prefix only if there is no useful textual match.
     # This can find an unindexed typo without replacing the submitted query.
     if (
@@ -118,7 +144,7 @@ def all_results(user, query):
         settings.TMDB_NSFW,
         settings.IGDB_NSFW,
     ]
-    key = "search:ranked:v2:" + hashlib.sha256(repr(identity).encode()).hexdigest()
+    key = "search:ranked:v3:" + hashlib.sha256(repr(identity).encode()).hexdigest()
     result = cache.get(key)
     if result is not None:
         return copy.deepcopy(result)

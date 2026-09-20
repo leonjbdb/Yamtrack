@@ -35,7 +35,7 @@ Ranking weights enforce the following precedence:
 | All exact query words | 750–800 |
 | Title prefix | 740 |
 | Whole title with one/two edits | 650/600 |
-| All words with bounded edits | 400–600 |
+| All words with bounded edits or prefix completion | 400–600 |
 | Other provider matches | 200 |
 
 Aliases receive a 20-point penalty relative to title matches. Provider order adds
@@ -43,14 +43,19 @@ at most five points, so it cannot move a fuzzy result above an exact title. Case
 punctuation and accents are normalized. Damerau-Levenshtein matching supports
 insertions, deletions, substitutions and adjacent transpositions: no typo for
 fewer than four characters, one edit for four to seven, two for longer terms.
-Tests cover Alien before Aliens, Alen and Alein finding Alien, aliases, duplicate
-identities and separate category results.
+Word completion adds a separate penalty instead of counting plural endings and
+attached sequel numbers as spelling errors. Every query word must match a
+distinct title word. Apostrophes and superscript numbers normalize consistently.
+Tests cover exact-first ordering, Alien/Aliens/Alien³, Batman, Terminator, Star
+Wars, Harry Potter, Lord of the Rings, Jurassic Park, Baldur's Gate, Christopher
+Nolan, Sigourney Weaver, accents, aliases, unrelated titles and short queries.
 
 Candidate selection uses trigrams and short prefixes, bounded to 2,000 records
 for one type or 400 per type for All Search. This prevents the larger people
-index from crowding out media candidates. For category searches without a useful
-match, at most two provider probes seed additional spelling candidates. The
-submitted query is preserved. This is bounded catalogue search, not a complete
+index from crowding out media candidates. Up to two corrected-word queries fetch
+additional provider candidates, including sequels absent from the local index.
+For category searches without a useful match, at most two token/prefix probes
+seed spelling candidates. The submitted query is preserved. This is bounded catalogue search, not a complete
 local mirror of every provider. The implementation follows exact/word/typo
 ranking principles documented by Elasticsearch and Algolia:
 

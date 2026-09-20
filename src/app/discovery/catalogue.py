@@ -16,6 +16,7 @@ from app.models import DiscoveryEntry
 def normalize(value):
     value = unicodedata.normalize("NFKD", value.casefold())
     value = "".join(c for c in value if not unicodedata.combining(c))
+    value = re.sub(r"['’]", "", value)
     return " ".join(re.findall(r"[^\W_]+", value, re.UNICODE))
 
 

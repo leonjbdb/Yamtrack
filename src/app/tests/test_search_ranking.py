@@ -62,6 +62,87 @@ class SearchRankingTests(TestCase):
         )
         self.assertEqual(name_score("up", "us"), 0)
 
+    def test_typos_complete_franchises_words_names_and_numbered_sequels(self):
+        cases = {
+            "Alen": ["Alien", "Aliens", "Alien³", "Aliens 3", "Alien: Romulus"],
+            "Batmn": ["Batman", "Batman Returns", "Batman Begins"],
+            "Termintor": ["The Terminator", "Terminator 2: Judgment Day"],
+            "Star Wras": ["Star Wars", "Star Wars: The Last Jedi"],
+            "Hary Poter": ["Harry Potter and the Philosopher's Stone"],
+            "Lord Rings": ["The Lord of the Rings: The Fellowship of the Ring"],
+            "Jurasic": ["Jurassic Park", "Jurassic World"],
+            "Baldurs Gat": ["Baldur's Gate 3"],
+            "Cristopher Nolan": ["Christopher Nolan"],
+            "Sigourny Weaver": ["Sigourney Weaver"],
+            "Amelie": ["Amélie"],
+        }
+        for query, titles in cases.items():
+            for title in titles:
+                with self.subTest(query=query, title=title):
+                    self.assertGreaterEqual(name_score(query, title), 400)
+
+    def test_unrelated_and_short_typos_are_not_fuzzy_candidates(self):
+        for query, title in [
+            ("up", "Us"),
+            ("it", "Up"),
+            ("dun", "Dawn"),
+            ("Alen", "Batman"),
+            ("Star Wras", "Star Trek"),
+            ("Harry Potter", "Harry Brown"),
+            ("Alien Alien", "Alien"),
+        ]:
+            with self.subTest(query=query, title=title):
+                self.assertEqual(name_score(query, title), 0)
+
+    def test_index_retrieves_series_for_multiple_misspellings(self):
+        titles = [
+            "Alien",
+            "Aliens",
+            "Alien³",
+            "Alien: Romulus",
+            "Batman",
+            "Batman Returns",
+            "Star Wars",
+            "Star Wars: The Last Jedi",
+        ]
+        remember([row(title, index) for index, title in enumerate(titles)])
+        for query, expected in [
+            ("Alen", set(titles[:4])),
+            ("Batmn", set(titles[4:6])),
+            ("Star Wras", set(titles[6:])),
+        ]:
+            with self.subTest(query=query):
+                found = {r["name"] for r in close_matches(query, ["movie"], ["tmdb"])}
+                self.assertTrue(expected.issubset(found), found)
+
+    @patch("app.providers.services.search")
+    def test_corrected_query_fetches_sequels_missing_from_index(self, search):
+        remember([row("Alien", 1)])
+
+        def fetch(kind, query, page, source):
+            titles = (
+                ["Alien", "Aliens", "Alien³", "Alien: Romulus"]
+                if query == "alien"
+                else []
+            )
+            return {
+                "results": [
+                    provider_row(title, i + 1) for i, title in enumerate(titles)
+                ],
+                "page": 1,
+                "total_pages": 1,
+                "total_results": len(titles),
+            }
+
+        search.side_effect = fetch
+        response = self.client.get(
+            reverse("search"), {"q": "Alen", "media_type": "movie"}
+        )
+        names = {r["name"] for r in response.context["data"]["results"]}
+        self.assertEqual(names, {"Alien", "Aliens", "Alien³", "Alien: Romulus"})
+        self.assertContains(response, 'hx-get="/track_modal/tmdb/movie/3"')
+        self.assertLessEqual(search.call_count, 3)
+
     @patch("app.providers.services.search")
     def test_original_search_has_inline_fuzzy_results_and_all_hover_actions(
         self, search

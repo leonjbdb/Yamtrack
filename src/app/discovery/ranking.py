@@ -1,5 +1,7 @@
 """Deterministic textual ranking; provider order is a bounded tie-breaker."""
 
+from collections import Counter
+
 from app.discovery.catalogue import normalize
 
 
@@ -28,6 +30,53 @@ def edit_distance(left, right, limit=2):
     return previous[-1]
 
 
+def token_match(word, candidate):
+    """Return edit/completion cost and the corrected portion of a title word."""
+    limit = 0 if len(word) < 4 or word.isdigit() else 1 if len(word) < 8 else 2
+    distance = edit_distance(word, candidate, limit)
+    if distance <= limit:
+        return distance * 40, candidate
+    if candidate.startswith(word) and not word.isdigit():
+        return 15 + min(25, len(candidate) - len(word)), word
+    if not limit:
+        return None
+    # Complete a misspelled prefix without charging the rest of the word as
+    # typos. This includes plural titles and attached sequel numbers.
+    matches = []
+    for end in range(len(word), min(len(candidate), len(word) + limit) + 1):
+        distance = edit_distance(word, candidate[:end], limit)
+        if distance <= limit:
+            matches.append(
+                (distance * 40 + 15 + min(25, len(candidate) - end), candidate[:end])
+            )
+    return min(matches) if matches else None
+
+
+def matched_tokens(query, name):
+    """Match every query word to a distinct title word, most specific first."""
+    words, target = normalize(query).split(), normalize(name).split()
+    options = []
+    for position, word in enumerate(words):
+        matches = [
+            (match[0], index, match[1])
+            for index, candidate in enumerate(target)
+            if (match := token_match(word, candidate)) is not None
+        ]
+        if not matches:
+            return None
+        options.append((len(matches), position, sorted(matches)))
+    used, corrected, cost = set(), {}, 0
+    for _, position, matches in sorted(options):
+        available = [match for match in matches if match[1] not in used]
+        if not available:
+            return None
+        penalty, index, word = available[0]
+        used.add(index)
+        corrected[position] = word
+        cost += penalty
+    return cost, " ".join(corrected[index] for index in range(len(words)))
+
+
 def name_score(query, name):
     query, name = normalize(query), normalize(name)
     if not query or not name:
@@ -39,7 +88,7 @@ def name_score(query, name):
         return 940
     if f" {query} " in f" {name} ":
         return 850 - min(50, len(target) - len(words))
-    if all(word in target for word in words):
+    if not Counter(words) - Counter(target):
         return 800 - min(50, len(target) - len(words))
     if name.startswith(query):
         return 740
@@ -47,22 +96,10 @@ def name_score(query, name):
     distance = edit_distance(query, name, limit)
     if distance <= limit:
         return 700 - distance * 50
-    edits = 0
-    remaining = target.copy()
-    for word in words:
-        limit = 0 if len(word) < 4 else 1 if len(word) < 8 else 2
-        matches = [
-            (edit_distance(word, candidate, limit), index)
-            for index, candidate in enumerate(remaining)
-        ]
-        if not matches:
-            return 0
-        best, index = min(matches)
-        if best > limit:
-            return 0
-        edits += best
-        remaining.pop(index)
-    return 600 - edits * 40 - min(100, len(remaining) * 10)
+    matched = matched_tokens(query, name)
+    if matched is None:
+        return 0
+    return max(400, 600 - matched[0] - min(100, (len(target) - len(words)) * 10))
 
 
 def score(query, row):

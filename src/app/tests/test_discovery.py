@@ -241,7 +241,9 @@ class DiscoveryTests(TestCase):
         self.assertNotContains(response, "Close matches")
         self.assertContains(response, "Interstelar")
         self.assertContains(response, "Interstellar")
-        self.assertEqual(search.call_count, 1)
+        self.assertEqual(search.call_count, 2)
+        search.assert_any_call("movie", "Interstelar", 1, "tmdb")
+        search.assert_any_call("movie", "interstellar", 1, "tmdb")
 
     @patch("app.discovery.providers.search_screen")
     def test_unknown_multiword_name_uses_bounded_token_candidates(self, search):
