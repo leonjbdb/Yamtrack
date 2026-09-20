@@ -226,6 +226,7 @@ def search(request, category=None):
             else []
         )
         data["results"] = merge_ranked(query, data["results"], indexed)
+        data["total_results"] = max(data.get("total_results", 0), len(data["results"]))
     enrich_cards(request, data["results"])
     params = {
         "q": query,

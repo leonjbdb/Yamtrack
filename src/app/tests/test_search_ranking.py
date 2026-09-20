@@ -140,6 +140,7 @@ class SearchRankingTests(TestCase):
         )
         names = {r["name"] for r in response.context["data"]["results"]}
         self.assertEqual(names, {"Alien", "Aliens", "Alien³", "Alien: Romulus"})
+        self.assertEqual(response.context["data"]["total_results"], 4)
         self.assertContains(response, 'hx-get="/track_modal/tmdb/movie/3"')
         self.assertLessEqual(search.call_count, 3)
 
