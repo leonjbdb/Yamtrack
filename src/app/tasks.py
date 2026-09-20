@@ -80,3 +80,6 @@ def refresh_collection_facts(user_id):
                 fact.save(update_fields=["attempted_at", "error"])
     finally:
         cache.delete(lock)
+
+# Register the public catalogue indexing task with the existing app worker.
+from app.discovery.tasks import index_catalogue_credits  # noqa: F401, E402

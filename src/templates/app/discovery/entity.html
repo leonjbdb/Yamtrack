@@ -1,0 +1,25 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}{{ entity.name }} - Yamtrack{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}">{% endblock %}
+{% block content %}
+<div class="discovery">
+  <a class="discovery-back" href="{% url 'discover' %}?scope={% if kind == 'person' %}people{% elif source == 'igdb' %}game_studios{% elif kind == 'network' %}networks{% else %}studios{% endif %}">← Discover more</a>
+  <header class="discovery-profile"><img src="{{ entity.image }}" alt="{{ entity.name }}" class="{% if kind != 'person' %}discovery-logo{% endif %}"><div><span class="discovery-eyebrow">{% if kind == 'person' %}PEOPLE & THEIR WORK{% elif kind == 'network' %}TELEVISION NETWORK{% elif source == 'igdb' %}GAME STUDIO / PUBLISHER{% else %}PRODUCTION COMPANY{% endif %}</span><h1>{{ entity.name }}</h1><p>{{ entity.description }}{% if entity.birthplace %} · {{ entity.birthplace }}{% endif %}</p>{% if entity.biography %}<details class="discovery-biography"><summary>About {{ entity.name }}</summary><p>{{ entity.biography|linebreaksbr }}</p></details>{% endif %}</div></header>
+  <div class="discovery-section-heading"><div><h2>{% if kind == 'person' %}Explore the filmography{% else %}Explore the catalogue{% endif %}</h2><p>{% if kind == 'person' %}{{ credit_total }} unique titles across all credited roles. A title can have more than one role.{% else %}Credits from the catalogue, with your own tracking status highlighted.{% endif %}</p></div></div>
+  <form class="discovery-filters" method="get">
+    {% if kind == 'person' %}
+      <label>Media<select name="type"><option value="all" {% if media_type == 'all' %}selected{% endif %}>Movies & TV</option><option value="movie" {% if media_type == 'movie' %}selected{% endif %}>Movies</option><option value="tv" {% if media_type == 'tv' %}selected{% endif %}>TV shows</option></select></label>
+      <label>Department<select name="department"><option value="all">All departments</option>{% for name,count in departments %}<option value="{{ name }}" {% if department == name %}selected{% endif %}>{{ name }} ({{ count }})</option>{% endfor %}</select></label>
+      <label>Exact role<select name="role"><option value="all">All roles</option>{% for name,count in roles %}<option value="{{ name }}" {% if role == name %}selected{% endif %}>{{ name }} ({{ count }})</option>{% endfor %}</select></label>
+      <label>Sort<select name="sort"><option value="newest" {% if sort == 'newest' %}selected{% endif %}>Newest first</option><option value="oldest" {% if sort == 'oldest' %}selected{% endif %}>Oldest first</option><option value="popular" {% if sort == 'popular' %}selected{% endif %}>Most popular</option><option value="title" {% if sort == 'title' %}selected{% endif %}>Title A–Z</option></select></label>
+      <label>Title contains<input name="q" value="{{ query }}" placeholder="Filter this filmography" maxlength="200"></label>
+    {% elif source == 'igdb' %}<label>Company role<select name="role"><option value="all">All roles</option><option value="developer" {% if role == 'developer' %}selected{% endif %}>Developer</option><option value="publisher" {% if role == 'publisher' %}selected{% endif %}>Publisher</option><option value="porting" {% if role == 'porting' %}selected{% endif %}>Porting</option><option value="supporting" {% if role == 'supporting' %}selected{% endif %}>Support</option></select></label>
+    {% elif kind == 'company' %}<label>Media<select name="type"><option value="movie" {% if media_type == 'movie' %}selected{% endif %}>Movies</option><option value="tv" {% if media_type == 'tv' %}selected{% endif %}>TV shows</option></select></label>{% endif %}
+    <button>Apply filters</button><a href="{{ request.path }}">Reset</a>
+  </form>
+  {% if entity.total_results != None %}<p class="discovery-note">{{ entity.total_results }} matching titles</p>{% endif %}
+  {% if entity.results %}<div class="discovery-grid">{% for card in entity.results %}{% include 'app/discovery/card.html' %}{% endfor %}</div>{% else %}<div class="discovery-empty">No titles match these filters. Try another role or media type.</div>{% endif %}
+  {% include 'app/discovery/pagination.html' %}
+  <p class="discovery-attribution">Credits: {{ source|upper }} · roles describe catalogue credits, not ownership or viewing history.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,4 @@
+<a class="discovery-card {% if card.kind == 'person' %}discovery-person{% elif card.kind == 'company' or card.kind == 'network' %}discovery-company{% endif %}" href="{{ card.url }}">
+  <div class="discovery-cover"><img src="{{ card.image }}" alt="" loading="lazy"><span class="discovery-kind">{{ card.kind|title }}</span>{% if card.tracked %}<span class="discovery-tracked">{{ card.tracked }}</span>{% endif %}</div>
+  <div class="discovery-card-body"><h3>{{ card.name }}</h3>{% if card.description %}<p>{{ card.description }}</p>{% endif %}{% for role in card.roles %}<p class="discovery-credit"><strong>{{ role.role }}</strong>{% if role.character %} · {{ role.character }}{% endif %}{% if role.episodes %} · {{ role.episodes }} ep.{% endif %}</p>{% endfor %}</div>
+</a>

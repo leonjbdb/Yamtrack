@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% load app_tags %}
 {% load humanize %}
+{% load static %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}">{% endblock %}
 
 {% block title %}
   {{ media.title }}
@@ -376,6 +378,7 @@
         <div class="bg-[#2a2f35] rounded-lg divide-y divide-white/5">
           {% if media.details.items %}
             {% for key, value in media.details.items %}
+              {% if not media.discovery or key != 'studios' and key != 'companies' %}
               <div class="flex justify-between gap-x-4 px-4 py-2.5">
                 <h3 class="text-xs font-semibold text-gray-400 uppercase shrink-0 mt-0.5">{{ key|no_underscore }}</h3>
                 <div class="text-sm text-gray-200 text-right">
@@ -386,7 +389,8 @@
                   {% endif %}
                 </div>
               </div>
-            {% endfor %}
+            {% endif %}{% endfor %}
+            {% include "app/discovery/key_credits.html" %}
             <div class="flex justify-between gap-x-4 px-4 py-2.5">
               <h3 class="text-xs font-semibold text-gray-400 uppercase shrink-0 mt-0.5">Provider</h3>
               <a href="{{ media.source_url }}"
@@ -416,7 +420,8 @@
         {# Section filter links (mobile: directly above the tab content) #}
         {% include "app/components/media_section_tabs.html" with extra_classes="md:hidden mb-6" %}
 
-        {% if media.cast %}
+        {% include "app/discovery/credits.html" %}
+        {% if media.cast and not media.discovery %}
           <section class="mb-8" x-show="tab === 'overview' || tab === 'cast'">
             <h2 class="text-xl font-bold mb-4">Cast</h2>
             <div class="flex overflow-x-auto gap-x-4 pb-5">

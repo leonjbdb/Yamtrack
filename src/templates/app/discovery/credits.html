@@ -1,0 +1,8 @@
+{% if media.discovery %}
+<section class="discovery discovery-credits" x-show="tab === 'overview' || tab === 'credits'">
+  <div class="discovery-section-heading"><div><span class="discovery-eyebrow">BEHIND THE TITLE</span><h2>Cast & crew</h2><p>Follow a person to explore their work by role, without leaving Yamtrack.</p></div></div>
+  {% if media.discovery.cast %}<h3 class="discovery-subheading">Cast</h3><div class="discovery-people-grid">{% for person in media.discovery.cast|slice:':18' %}{% include 'app/discovery/person_credit.html' %}{% endfor %}</div>{% if media.discovery.cast|length > 18 %}<details class="discovery-credit-group"><summary>All {{ media.discovery.cast|length }} cast members</summary><div class="discovery-people-grid">{% for person in media.discovery.cast|slice:'18:' %}{% include 'app/discovery/person_credit.html' %}{% endfor %}</div></details>{% endif %}{% endif %}
+  {% if media.discovery.crew %}<h3 class="discovery-subheading">Crew by department</h3>{% for group in media.discovery.crew %}<details class="discovery-credit-group" {% if group.department == 'Directing' or group.department == 'Writing' %}open{% endif %}><summary>{{ group.department }} <span>{{ group.people|length }} credits</span></summary><div class="discovery-people-grid">{% for person in group.people %}{% include 'app/discovery/person_credit.html' %}{% endfor %}</div></details>{% endfor %}{% endif %}
+  {% if not media.discovery.cast and not media.discovery.crew %}<p class="discovery-note">No cast or crew credits are supplied for this title.</p>{% endif %}
+</section>
+{% endif %}

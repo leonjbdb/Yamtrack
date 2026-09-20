@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Discover - Yamtrack{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}">{% endblock %}
+{% block content %}
+<div class="discovery">
+  <header class="discovery-heading"><span class="discovery-eyebrow">FOLLOW YOUR CURIOSITY</span><h1>Find your next connection.</h1><p>Explore titles, the people behind them, and the studios that bring them to life.</p></header>
+  <form class="discovery-search" method="get"><label class="sr-only" for="discovery-query">Search titles, people or studios</label><input id="discovery-query" name="q" value="{{ query }}" maxlength="200" placeholder="A title, an actor, a director, a studio…" autofocus><input type="hidden" name="scope" value="{{ scope }}">{% if source %}<input type="hidden" name="source" value="{{ source }}">{% endif %}<button>Search</button></form>
+  <nav class="discovery-tabs" aria-label="Discovery search type">{% for tab in scopes %}<a href="{{ tab.url }}" {% if scope == tab.key %}aria-current="page"{% endif %}>{{ tab.label }}</a>{% endfor %}</nav>
+  {% if source_options|length > 1 %}<nav class="discovery-tabs" aria-label="Catalogue source">{% for option in source_options %}<a href="{{ option.url }}" {% if source == option.key %}aria-current="page"{% endif %}>{{ option.label }}</a>{% endfor %}</nav>{% endif %}
+  {% if note %}<p class="discovery-note">{{ note }}</p>{% endif %}
+  {% if suggestions %}<section class="discovery-suggestions"><div class="discovery-section-heading"><h2>Close matches</h2><p>Similar names from the public catalogue. Your original search remains below.</p></div><div class="discovery-grid">{% for card in suggestions %}{% include 'app/discovery/card.html' %}{% endfor %}</div></section>{% endif %}
+  {% if query %}<div class="discovery-section-heading"><h2>Results for “{{ query }}”</h2>{% if data.total_results %}<span>{{ data.total_results }} results</span>{% endif %}</div>
+    {% if data.results %}<div class="discovery-grid">{% for card in data.results %}{% include 'app/discovery/card.html' %}{% endfor %}</div>{% else %}<div class="discovery-empty">No exact catalogue results for this search.{% if not suggestions %} Try a surname, a shorter title, or another search category.{% endif %}</div>{% endif %}
+  {% else %}<div class="discovery-intro"><div><h2>From a face to a filmography</h2><p>Open any person to separate acting, directing, screenplay and other credits across movies and TV.</p></div><div><h2>From a studio to a new favourite</h2><p>Browse production companies, TV networks, game developers and publishers without leaving Yamtrack.</p></div><div><h2>A little room for typos</h2><p>Close matches use titles and names explored in the public catalogue. Accents, punctuation and word order are handled without silently changing your search.</p></div></div>{% endif %}
+  {% include 'app/discovery/pagination.html' %}
+  <p class="discovery-attribution">Film, television, people and production credits: TMDB. Game companies: IGDB. Coverage follows each catalogue; missing credits are not inferred.</p>
+</div>
+{% endblock %}

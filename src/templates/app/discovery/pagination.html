@@ -1,0 +1,1 @@
+{% if previous or next %}<nav class="discovery-pagination" aria-label="Discovery pages">{% if previous %}<a href="{{ previous }}">← Previous</a>{% endif %}<span>Page {% if page %}{{ page }}{% else %}{{ data.page }}{% endif %}{% if total_pages %} of {{ total_pages }}{% endif %}</span>{% if next %}<a href="{{ next }}">Next →</a>{% endif %}</nav>{% endif %}

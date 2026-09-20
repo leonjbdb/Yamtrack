@@ -662,3 +662,9 @@ CELERY_BEAT_SCHEDULE["sync-private-game-libraries"] = {
     "task": "game_connections.tasks.sync_due_connections",
     "schedule": crontab(minute=23),
 }
+
+
+CELERY_BEAT_SCHEDULE["index-public-discovery-catalogue"] = {
+    "task": "app.discovery.tasks.index_catalogue_credits",
+    "schedule": crontab(hour=3, minute=15),
+}

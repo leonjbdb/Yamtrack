@@ -188,8 +188,9 @@ def search(query, page):
             "Authorization": f"Bearer {access_token}",
         }
 
+        escaped_query = query.replace("\\", "\\\\").replace('"', '\\"')
         base_conditions = (
-            f'where name ~ *"{query}"* & game_type = (0,1,2,3,4,5,6,7,8,9,10)'
+            f'where name ~ *"{escaped_query}"* & game_type = (0,1,2,3,4,5,6,7,8,9,10)'
         )
 
         if not settings.IGDB_NSFW:

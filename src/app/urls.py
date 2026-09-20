@@ -1,6 +1,7 @@
 from django.urls import path, register_converter
 
 from app import converters, views
+from app.discovery import views as discovery_views
 
 register_converter(converters.MediaTypeChecker, "media_type")
 register_converter(converters.SourceChecker, "source")
@@ -10,6 +11,12 @@ urlpatterns = [
     path("", views.home, name="home"),
     path("<str:username>/<media_type:media_type>", views.media_list, name="medialist"),
     path("search", views.media_search, name="search"),
+    path("discover", discovery_views.search, name="discover"),
+    path(
+        "discover/<str:source>/<str:kind>/<int:external_id>",
+        discovery_views.entity,
+        name="discovery_entity",
+    ),
     path(
         "details/<source:source>/<media_type:media_type>/<str:media_id>/<str:title>",
         views.media_details,

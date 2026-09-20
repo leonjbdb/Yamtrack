@@ -1,4 +1,5 @@
 import logging
+import copy
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -295,6 +296,27 @@ def media_search(request):
 
     data = services.search(media_type, query, page, source)
 
+    from app.discovery.catalogue import remember, close_matches
+
+    remember(
+        [
+            {
+                "source": r["source"],
+                "kind": r["media_type"],
+                "external_id": str(r["media_id"]),
+                "name": r["title"],
+                "image": r["image"],
+            }
+            for r in data.get("results", [])
+        ]
+    )
+    suggestions = (
+        close_matches(query, [media_type], [source])
+        if page == 1 and source != "manual"
+        else []
+    )
+    result_ids = {str(r["media_id"]) for r in data.get("results", [])}
+    suggestions = [r for r in suggestions if r["external_id"] not in result_ids]
     # Enrich search results with user tracking data
     if data.get("results"):
         data["results"] = helpers.enrich_items_with_user_data(
@@ -303,6 +325,7 @@ def media_search(request):
 
     context = {
         "data": data,
+        "suggestions": suggestions,
         "source": source,
         "media_type": media_type,
         "layout": layout,
@@ -314,7 +337,17 @@ def media_search(request):
 @require_GET
 def media_details(request, source, media_type, media_id, title):  # noqa: ARG001 title for URL
     """Return the details page for a media item."""
-    media_metadata = services.get_media_metadata(media_type, media_id, source)
+    media_metadata = copy.deepcopy(
+        services.get_media_metadata(media_type, media_id, source)
+    )
+    from app.discovery import providers as discovery_providers
+
+    if source == "tmdb" and media_type in ("movie", "tv"):
+        media_metadata["discovery"] = discovery_providers.title_credits(
+            media_type, media_id
+        )
+    elif source == "igdb" and media_type == "game":
+        media_metadata["discovery"] = discovery_providers.game_companies(media_id)
     user_medias = BasicMedia.objects.filter_media_prefetch(
         request.user,
         media_id,
@@ -365,7 +398,13 @@ def season_details(request, source, media_id, title, season_number):  # noqa: AR
         source,
         [season_number],
     )
-    season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
+    season_metadata = copy.deepcopy(tv_with_seasons_metadata[f"season/{season_number}"])
+    if source == "tmdb":
+        from app.discovery import providers as discovery_providers
+
+        season_metadata["discovery"] = discovery_providers.title_credits(
+            "season", media_id, season_number
+        )
 
     user_medias = BasicMedia.objects.filter_media_prefetch(
         request.user,

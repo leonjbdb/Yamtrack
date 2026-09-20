@@ -2002,3 +2002,29 @@ class BoardGame(Media):
     """Model for board games."""
 
     tracker = FieldTracker()
+
+
+class DiscoveryEntry(models.Model):
+    """Public provider identities only; never user collections or manual entries."""
+
+    source = models.CharField(max_length=20)
+    kind = models.CharField(max_length=20)
+    external_id = models.CharField(max_length=80)
+    name = models.CharField(max_length=500)
+    aliases = models.JSONField(default=list)
+    search_text = models.TextField()
+    image = models.TextField(blank=True)
+    description = models.CharField(max_length=500, blank=True)
+    adult = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "kind", "external_id"],
+                name="discovery_identity_unique",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["source", "kind"], name="discovery_source_kind")
+        ]

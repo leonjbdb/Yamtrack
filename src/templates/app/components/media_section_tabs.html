@@ -8,7 +8,9 @@
       Overview
     </button>
 
-    {% if media.cast %}
+    {% if media.discovery.cast or media.discovery.crew %}
+      <button @click="tab = 'credits'" class="pb-3 text-sm font-medium whitespace-nowrap border-b-2 cursor-pointer" :class="tab === 'credits' ? 'text-white border-indigo-500' : 'text-gray-400 border-transparent'">Cast & crew</button>
+    {% elif media.cast %}
       <button @click="tab = 'cast'"
               class="pb-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors duration-200 cursor-pointer"
               :class="tab === 'cast' ? 'text-white border-indigo-500' : 'text-gray-400 border-transparent hover:text-white'">

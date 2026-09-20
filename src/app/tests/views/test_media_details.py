@@ -19,6 +19,9 @@ class MediaDetailsViewTests(TestCase):
 
     def setUp(self):
         """Create a user and log in."""
+        credits = patch("app.discovery.providers.title_credits", return_value={})
+        credits.start()
+        self.addCleanup(credits.stop)
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)

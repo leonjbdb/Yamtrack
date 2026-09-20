@@ -1,11 +1,13 @@
 {% extends "base.html" %}
-{% load app_tags %}
+{% load app_tags static %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}">{% endblock %}
 
 {% block title %}
   Search - Yamtrack
 {% endblock title %}
 
 {% block content %}
+<div class="discovery"><nav class="discovery-legacy-links" aria-label="Explore more"><strong>Discover more</strong><a href="{% url 'discover' %}?q={{ request.GET.q|urlencode }}&scope=screen">Movies & TV</a><a href="{% url 'discover' %}?q={{ request.GET.q|urlencode }}&scope=people">People & crew</a><a href="{% url 'discover' %}?q={{ request.GET.q|urlencode }}&scope=studios">Studios</a><a href="{% url 'discover' %}?q={{ request.GET.q|urlencode }}&scope=game_studios">Game companies</a></nav>{% if suggestions %}<section class="discovery-suggestions"><h2>Close matches</h2><p class="discovery-note">Similar catalogue names. Your original search is below.</p><div class="discovery-grid">{% for card in suggestions %}{% include 'app/discovery/card.html' %}{% endfor %}</div></section>{% endif %}</div>
   <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-y-4">
     <h2 class="text-2xl font-bold">Search Results</h2>
     <div class="flex items-center flex-wrap gap-x-4 gap-y-2">

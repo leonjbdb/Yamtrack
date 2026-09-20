@@ -489,7 +489,8 @@ def media_section_count(
 ):
     """Return the number of content sections on the media details page."""
     count = 0
-    if media.get("cast"):
+    credits = media.get("discovery") or {}
+    if credits.get("cast") or credits.get("crew") or media.get("cast"):
         count += 1
     related = media.get("related") or {}
     count += sum(1 for related_items in related.values() if related_items)
@@ -527,3 +528,20 @@ def seconds_to_duration(seconds):
     if minutes >= 45:  # noqa: PLR2004
         return f"{hours + 1}h"
     return f"{hours}h" if minutes < 15 else f"{hours}h 30m"  # noqa: PLR2004
+
+
+@register.simple_tag
+def get_discovery_types():
+    from app.discovery.views import SCOPES
+
+    return [{"display": label, "value": key} for key, label in SCOPES]
+
+
+@register.simple_tag(takes_context=True)
+def get_discovery_selection(context):
+    from app.discovery.views import SCOPES
+
+    scope = context.get("scope") or context.get("media_type") or "screen"
+    if scope not in dict(SCOPES):
+        scope = "screen"
+    return {"display": dict(SCOPES)[scope], "value": scope}
