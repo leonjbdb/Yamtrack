@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load app_tags static %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}{% get_static_file_mtime 'css/discovery.css' %}">{% endblock %}
 
 {% block title %}
   Search - Yamtrack

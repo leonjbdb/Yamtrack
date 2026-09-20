@@ -2,7 +2,7 @@
 {% load app_tags %}
 {% load humanize %}
 {% load static %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}{% get_static_file_mtime 'css/discovery.css' %}">{% endblock %}
 
 {% block title %}
   {{ media.title }}

@@ -1,6 +1,6 @@
-{% extends 'base.html' %}{% load static %}
+{% extends 'base.html' %}{% load static app_tags %}
 {% block title %}{{ entity.name }} - Yamtrack{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}{% get_static_file_mtime 'css/discovery.css' %}">{% endblock %}
 {% block content %}
 <a class="text-sm text-indigo-400" href="{{ back_url }}">← Search results</a>
 <header class="credit-profile">
