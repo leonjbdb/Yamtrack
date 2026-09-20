@@ -7,12 +7,13 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
+from django.contrib.auth.views import redirect_to_login
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Prefetch, prefetch_related_objects
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -166,7 +167,22 @@ def progress_edit(request, media_type, instance_id):
 @require_GET
 def media_list(request, username, media_type):
     """Return the media list page."""
-    target_user = get_object_or_404(User, username=username)
+    target_user = User.objects.filter(username=username).first()
+    if not request.user.is_authenticated and (
+        target_user is None or target_user.profile_private
+    ):
+        # An expired session must resume through login, not look like a missing
+        # collection. Treat unknown and private profiles alike before login.
+        response = redirect_to_login(request.get_full_path())
+        if request.headers.get("HX-Request"):
+            # HTMX follows 302s inside the partial request. SSO needs a full
+            # navigation so its form and cross-origin redirects can run.
+            response = HttpResponse(headers={"HX-Redirect": response.url})
+        response["Cache-Control"] = "private, no-store"
+        return response
+    if target_user is None:
+        msg = "User not found"
+        raise Http404(msg)
 
     # if user is looking at own page then update preferences
     if request.user == target_user:

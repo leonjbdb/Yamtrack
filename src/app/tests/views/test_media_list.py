@@ -1,8 +1,12 @@
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
 from app.models import (
+    Book,
     Item,
     MediaTypes,
     Movie,
@@ -193,3 +197,98 @@ class MediaListViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("media_list", response.context)
+
+    def test_anonymous_private_collections_resume_through_login(self):
+        """Every private media route retains its destination after expiry."""
+        self.client.logout()
+        for media_type in MediaTypes.values:
+            with self.subTest(media_type=media_type):
+                path = reverse("medialist", args=[self.user.username, media_type])
+                path += "?status=Planning&sort=title&layout=table&search=ring&page=2"
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 302)
+                location = urlsplit(response.url)
+                self.assertEqual(location.path, reverse("account_login"))
+                self.assertEqual(parse_qs(location.query)["next"], [path])
+                self.assertEqual(response["Cache-Control"], "private, no-store")
+
+    def test_expired_session_redirects_instead_of_hiding_own_books(self):
+        """Exercise a genuinely expired session cookie, not just logout."""
+        session = self.client.session
+        session.set_expiry(-1)
+        session.save()
+        path = reverse("medialist", args=[self.user.username, "book"])
+        response = self.client.get(path)
+        self.assertRedirects(
+            response,
+            reverse("account_login") + "?next=" + path,
+            fetch_redirect_response=False,
+        )
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(path).status_code, 200)
+
+    def test_expired_htmx_requests_use_full_page_login(self):
+        """Filters, pagination and soft navigation must not embed the login page."""
+        self.client.logout()
+        path = reverse("medialist", args=[self.user.username, "book"])
+        for headers in (
+            {"HX-Request": "true"},
+            {"HX-Request": "true", "X-Soft-Navigation": "true"},
+            {"HX-Request": "true", "HX-Target": "empty_list"},
+        ):
+            with self.subTest(headers=headers):
+                response = self.client.get(path, headers=headers)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response["HX-Redirect"],
+                    reverse("account_login") + "?next=" + path,
+                )
+                self.assertEqual(response.content, b"")
+                self.assertEqual(response["Cache-Control"], "private, no-store")
+
+    def test_anonymous_missing_and_private_profiles_have_same_login_behavior(self):
+        """The redirect must not disclose whether a private username exists."""
+        self.client.logout()
+        for username in (self.user.username, "missing-user"):
+            path = reverse("medialist", args=[username, "book"])
+            self.assertRedirects(
+                self.client.get(path),
+                reverse("account_login") + "?next=" + path,
+                fetch_redirect_response=False,
+            )
+
+    def test_signed_in_nonowner_and_missing_profiles_still_return_404(self):
+        """Reauthentication does not grant access to another private library."""
+        for username in (self.external_user.username, "missing-user"):
+            path = reverse("medialist", args=[username, "book"])
+            self.assertEqual(self.client.get(path).status_code, 404)
+
+    @patch("requests.sessions.Session.request", side_effect=AssertionError("Network"))
+    def test_book_collection_and_actions_do_not_require_catalogue(self, network):
+        """Stored books and their action controls survive catalogue outages."""
+        item = Item.objects.create(
+            media_id="OL26449223M",
+            source=Sources.OPENLIBRARY,
+            media_type=MediaTypes.BOOK,
+            title="The Fellowship of the Ring",
+            image="https://example.com/cover.jpg",
+        )
+        Book.objects.bulk_create(
+            [
+                Book(item=item, user=self.user, status=Status.PLANNING),
+            ]
+        )
+        path = reverse("medialist", args=[self.user.username, "book"])
+        for layout in ("grid", "table"):
+            with self.subTest(layout=layout):
+                response = self.client.get(path, {"layout": layout})
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, item.title)
+                self.assertContains(
+                    response,
+                    reverse(
+                        "track_modal",
+                        args=[item.source, item.media_type, item.media_id],
+                    ),
+                )
+        network.assert_not_called()
