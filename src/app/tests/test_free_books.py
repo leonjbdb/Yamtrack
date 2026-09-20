@@ -332,3 +332,27 @@ class FreeBookTests(TestCase):
         result = free_books.series_cards(rows)
         self.assertEqual([r["external_id"] for r in result], ["OL1M", "OL2M"])
         search.assert_called_once_with("key:(/works/OL1W OR /works/OL2W)", limit=100)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_tracking_provider_failure_is_visible_and_retryable(self, metadata):
+        metadata.side_effect = ProviderAPIError(
+            "openlibrary", requests.Timeout("timeout")
+        )
+        url = reverse("track_modal", args=["openlibrary", "book", "OL1M"])
+        response = self.client.get(
+            url, {"return_url": "/search?q=novel"}, HTTP_HX_REQUEST="true"
+        )
+        self.assertContains(response, "Unable to load tracking form")
+        self.assertContains(response, "Retry")
+        self.assertContains(response, "data-tracking-error")
+        self.assertNotContains(response, "<form")
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertEqual(Book.objects.count(), 0)
+        metadata.side_effect = None
+        metadata.return_value = {"title": "Novel"}
+        retry = self.client.get(
+            url, {"return_url": "/search?q=novel"}, HTTP_HX_REQUEST="true"
+        )
+        self.assertContains(retry, "<form")
+        self.assertNotContains(retry, "Unable to load tracking form")
+        self.assertEqual(Book.objects.count(), 0)

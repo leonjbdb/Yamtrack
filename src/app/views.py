@@ -589,12 +589,23 @@ def track_modal(
         if media_type == MediaTypes.GAME.value:
             initial_data["progress"] = helpers.minutes_to_hhmm(media.progress)
     else:
-        metadata = services.get_media_metadata(
-            media_type,
-            media_id,
-            source,
-            [season_number],
-        )
+        try:
+            metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                [season_number],
+            )
+        except services.ProviderAPIError as error:
+            # HTMX does not swap a generic 500 page into the tracking modal.
+            # Render the failure as modal content, without an editable form.
+            response = render(
+                request,
+                "app/components/track_error.html",
+                {"error": str(error), "retry_url": request.get_full_path()},
+            )
+            response["Cache-Control"] = "private, no-store"
+            return response
         title = metadata["title"]
         if is_unreleased(metadata):
             initial_data["status"] = (

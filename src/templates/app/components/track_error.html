@@ -1,0 +1,13 @@
+<div data-tracking-error class="bg-[#2a2f35] p-6 rounded-lg">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-2xl font-bold text-white">Unable to load tracking form</h2>
+    <button type="button" aria-label="Close" class="text-gray-400 hover:text-white cursor-pointer"
+            @click="trackOpen = false; createOpen = false">
+      {% include "app/icons/x.svg" with classes="w-6 h-6" %}
+    </button>
+  </div>
+  <p role="alert" class="text-gray-300 mb-4">{{ error }}</p>
+  <button type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded"
+          hx-get="{{ retry_url }}" hx-target="closest [data-tracking-error]"
+          hx-swap="outerHTML" hx-disabled-elt="this">Retry</button>
+</div>
