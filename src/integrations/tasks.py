@@ -152,7 +152,7 @@ def import_steam(username, user_id, mode):
     ).first()
     if connection:
         sync_game_connection.delay(connection.pk)
-    return "Steam imports now use Game connections in Settings."
+    return "Steam imports now use Game Connections in Settings."
 
 
 @shared_task(name="Import from IMDB")

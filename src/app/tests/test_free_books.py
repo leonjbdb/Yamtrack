@@ -342,7 +342,7 @@ class FreeBookTests(TestCase):
         response = self.client.get(
             url, {"return_url": "/search?q=novel"}, HTTP_HX_REQUEST="true"
         )
-        self.assertContains(response, "Unable to load tracking form")
+        self.assertContains(response, "Unable to Load Tracking Form")
         self.assertContains(response, "Retry")
         self.assertContains(response, "data-tracking-error")
         self.assertNotContains(response, "<form")
@@ -354,5 +354,5 @@ class FreeBookTests(TestCase):
             url, {"return_url": "/search?q=novel"}, HTTP_HX_REQUEST="true"
         )
         self.assertContains(retry, "<form")
-        self.assertNotContains(retry, "Unable to load tracking form")
+        self.assertNotContains(retry, "Unable to Load Tracking Form")
         self.assertEqual(Book.objects.count(), 0)
