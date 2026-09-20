@@ -17,7 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from app import config, helpers, history_processor
+from app import helpers, history_processor
 from app import home as home_helpers
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
@@ -279,59 +279,10 @@ def media_list(request, username, media_type):
 
 @require_GET
 def media_search(request):
-    """Return the media search page."""
-    media_type = request.user.update_preference(
-        "last_search_type",
-        request.GET["media_type"],
-    )
-    query = request.GET["q"]
-    page = int(request.GET.get("page", 1))
-    layout = request.GET.get("layout", "grid")
+    """Search with native result cards and explicit categories."""
+    from app.discovery.search import search
 
-    # only receives source when searching with secondary source
-    source = request.GET.get(
-        "source",
-        config.get_default_source_name(media_type).value,
-    )
-
-    data = services.search(media_type, query, page, source)
-
-    from app.discovery.catalogue import remember, close_matches
-
-    remember(
-        [
-            {
-                "source": r["source"],
-                "kind": r["media_type"],
-                "external_id": str(r["media_id"]),
-                "name": r["title"],
-                "image": r["image"],
-            }
-            for r in data.get("results", [])
-        ]
-    )
-    suggestions = (
-        close_matches(query, [media_type], [source])
-        if page == 1 and source != "manual"
-        else []
-    )
-    result_ids = {str(r["media_id"]) for r in data.get("results", [])}
-    suggestions = [r for r in suggestions if r["external_id"] not in result_ids]
-    # Enrich search results with user tracking data
-    if data.get("results"):
-        data["results"] = helpers.enrich_items_with_user_data(
-            request, data["results"], "search"
-        )
-
-    context = {
-        "data": data,
-        "suggestions": suggestions,
-        "source": source,
-        "media_type": media_type,
-        "layout": layout,
-    }
-
-    return render(request, "app/search.html", context)
+    return search(request)
 
 
 @require_GET

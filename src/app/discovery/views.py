@@ -7,31 +7,13 @@ from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.http import require_GET
-from app import config
+from app import helpers
 from app.models import MediaTypes
-from app.providers import services
 from app.discovery import providers
 from app.discovery.catalogue import (
-    close_matches,
-    remember,
-    url_for,
     link_with_query,
     normalize,
 )
-
-SCOPES = [
-    ("screen", "Movies, TV & people"),
-    ("people", "People"),
-    ("studios", "Film & TV studios"),
-    ("networks", "TV networks"),
-    ("game_studios", "Game studios"),
-    ("game", "Games"),
-    ("anime", "Anime"),
-    ("book", "Books"),
-    ("manga", "Manga"),
-    ("comic", "Comics"),
-    ("boardgame", "Board games"),
-]
 
 
 def page_number(request):
@@ -69,130 +51,41 @@ def private_render(request, template, context):
     return response
 
 
+def enrich_cards(request, rows):
+    """Reuse native result controls, grouping mixed filmographies by catalogue/type."""
+    grouped = {}
+    for row in rows:
+        if row["kind"] not in MediaTypes.values:
+            continue
+        grouped.setdefault((row["source"], row["kind"]), []).append(row)
+    for (source, kind), group in grouped.items():
+        items = [
+            {
+                "source": source,
+                "media_type": kind,
+                "media_id": row["external_id"],
+                "title": row["name"],
+                "image": row["image"],
+            }
+            for row in group
+        ]
+        for row, result in zip(
+            group,
+            helpers.enrich_items_with_user_data(request, items, "search"),
+            strict=True,
+        ):
+            row.update(result)
+
+
 @require_GET
 def search(request):
-    scope = request.GET.get("scope", "screen")
-    query = request.GET.get("q", "").strip()
-    if scope not in dict(SCOPES) or len(query) > 200:
-        return HttpResponseBadRequest("Invalid search")
-    try:
-        page = page_number(request)
-    except ValueError:
-        return HttpResponseBadRequest("Invalid page")
-    data = {"results": [], "page": page, "total_pages": 1, "total_results": 0}
-    suggestions = []
-    source = None
-    source_options = []
-    if scope in MediaTypes.values:
-        allowed = config.get_sources(scope)
-        source = (
-            request.GET.get("source") or config.get_default_source_name(scope).value
-        )
-        if source not in [x.value for x in allowed]:
-            return HttpResponseBadRequest("Invalid catalogue source")
-        source_options = [
-            {
-                "key": x.value,
-                "label": x.label,
-                "url": link_with_query(
-                    reverse("discover"), q=query, scope=scope, source=x.value
-                ),
-            }
-            for x in allowed
-        ]
-    note = ""
-    if query:
-        if scope in ("screen", "people", "studios"):
-            data = providers.search_screen(query, scope, page)
-            kinds = {
-                "screen": ["movie", "tv", "person"],
-                "people": ["person"],
-                "studios": ["company"],
-            }[scope]
-            sources = ["tmdb"]
-        elif scope == "game_studios":
-            data = providers.search_game_companies(query, page)
-            kinds = ["company"]
-            sources = ["igdb"]
-        elif scope == "networks":
-            # TMDB has network detail/discover APIs but no network-name search API.
-            data["results"] = close_matches(query, ["network"], ["tmdb"], limit=40)
-            kinds = ["network"]
-            sources = ["tmdb"]
-            note = "Networks are indexed from the TV catalogues explored on this server. Open any show to discover its network."
-        else:
-            result = services.search(scope, query, page, source)
-            cards = []
-            for r in result["results"]:
-                cards.append(
-                    {
-                        "source": r["source"],
-                        "kind": r["media_type"],
-                        "external_id": str(r["media_id"]),
-                        "name": r["title"],
-                        "image": r["image"],
-                        "description": "",
-                        "url": url_for(
-                            r["source"], r["media_type"], r["media_id"], r["title"]
-                        ),
-                    }
-                )
-            remember(cards)
-            data = dict(result, results=cards)
-            kinds = [scope]
-            sources = [source]
-        if page == 1 and scope != "networks":
-            exact = {
-                (r["source"], r["kind"], r["external_id"]) for r in data["results"]
-            }
-            suggestions = [
-                r
-                for r in close_matches(query, kinds, sources)
-                if (r["source"], r["kind"], r["external_id"]) not in exact
-            ]
-            # With no good local spelling candidate, a bounded name-token lookup
-            # can discover candidates the instance has not encountered before.
-            if (
-                not data["results"]
-                and not suggestions
-                and scope in ("screen", "people", "studios")
-            ):
-                tokens = [t for t in normalize(query).split() if len(t) >= 4]
-                probes = (
-                    list(dict.fromkeys(tokens))[:2]
-                    if len(tokens) > 1
-                    else [tokens[0][:4]]
-                    if tokens and len(tokens[0]) >= 6
-                    else []
-                )
-                for probe in probes:
-                    if normalize(probe) != normalize(query):
-                        providers.search_screen(probe, scope, 1)
-                suggestions = close_matches(query, kinds, sources)
-    own_badges(request.user, [*data["results"], *suggestions])
-    base = reverse("discover")
-    context = {
-        "query": query,
-        "scope": scope,
-        "scopes": [
-            {"key": k, "label": v, "url": link_with_query(base, q=query, scope=k)}
-            for k, v in SCOPES
-        ],
-        "data": data,
-        "suggestions": suggestions,
-        "note": note,
-        "source": source,
-        "source_options": source_options,
-    }
-    if page > 1:
-        context["previous"] = link_with_query(
-            base, q=query, scope=scope, source=source, page=page - 1
-        )
-    if data.get("has_next") or page < data.get("total_pages", 1):
-        context["next"] = link_with_query(
-            base, q=query, scope=scope, source=source, page=page + 1
-        )
-    return private_render(request, "app/discovery/search.html", context)
+    """Keep existing discovery bookmarks on the standard search interface."""
+    from app.discovery.search import search as standard_search
+
+    category = request.GET.get("scope", "all")
+    return standard_search(
+        request, category="all" if category == "screen" else category
+    )
 
 
 @require_GET
@@ -208,9 +101,10 @@ def entity(request, source, kind, external_id):
         page = page_number(request)
     except ValueError:
         return HttpResponseBadRequest("Invalid page")
-    media_type = request.GET.get(
-        "type", "all" if kind == "person" else "tv" if kind == "network" else "movie"
-    )
+    media_type = request.GET.get("type", "tv" if kind == "network" else "movie")
+    layout = request.GET.get("layout", "grid")
+    if layout not in ("grid", "list"):
+        return HttpResponseBadRequest("Invalid layout")
     role = request.GET.get("role", "all")
     department = request.GET.get("department", "all")
     query = request.GET.get("q", "").strip()
@@ -224,7 +118,13 @@ def entity(request, source, kind, external_id):
         return HttpResponseBadRequest("Invalid filter")
     context = {
         "source": source,
+        "layout": layout,
         "kind": kind,
+        "search_media_type": "game"
+        if source == "igdb"
+        else "tv"
+        if media_type == "tv"
+        else "movie",
         "media_type": media_type,
         "role": role,
         "department": department,
@@ -240,6 +140,10 @@ def entity(request, source, kind, external_id):
         role_counts = Counter()
         departments = Counter()
         for row in rows:
+            if media_type != "all" and row["kind"] != media_type:
+                continue
+            if query and normalize(query) not in normalize(row["name"]):
+                continue
             for label in {r["role"] for r in row["roles"]}:
                 role_counts[label] += 1
             for label in {r["department"] for r in row["roles"]}:
@@ -309,7 +213,104 @@ def entity(request, source, kind, external_id):
             total_pages=data["total_pages"],
         )
     own_badges(request.user, data["results"])
+    enrich_cards(request, data["results"])
     context["entity"] = data
+    params = {
+        "type": context["media_type"],
+        "role": role,
+        "department": department,
+        "q": query,
+        "sort": sort,
+        "layout": layout,
+    }
+
+    def chips(choices, selected, **reset):
+        return [
+            {
+                "label": label,
+                "active": value == selected,
+                "url": link_with_query(
+                    request.path, **(params | reset | {field: value})
+                ),
+            }
+            for field, value, label in choices
+        ]
+
+    if kind == "person":
+        context["media_filters"] = chips(
+            [
+                ("type", "all", "All"),
+                ("type", "movie", "Movies"),
+                ("type", "tv", "TV shows"),
+            ],
+            media_type,
+        )
+        context["role_filters"] = chips(
+            [
+                ("role", "all", "All roles"),
+                *[
+                    ("role", name, f"{name} ({count})")
+                    for name, count in context["roles"]
+                ],
+            ],
+            role,
+            department="all",
+        )
+        context["department_filters"] = chips(
+            [
+                ("department", "all", "All departments"),
+                *[
+                    ("department", name, f"{name} ({count})")
+                    for name, count in context["departments"]
+                ],
+            ],
+            department,
+            role="all",
+        )
+    elif source == "igdb":
+        context["role_filters"] = chips(
+            [
+                ("role", "all", "All roles"),
+                ("role", "developer", "Developer"),
+                ("role", "publisher", "Publisher"),
+                ("role", "porting", "Porting"),
+                ("role", "supporting", "Support"),
+            ],
+            role,
+        )
+    elif kind == "company":
+        context["media_filters"] = chips(
+            [("type", "movie", "Movies"), ("type", "tv", "TV shows")], media_type
+        )
+    context["sort_filters"] = (
+        chips(
+            [
+                ("sort", "popular", "Most popular"),
+                ("sort", "newest", "Newest"),
+                ("sort", "oldest", "Oldest"),
+                ("sort", "title", "A–Z"),
+            ],
+            sort,
+        )
+        if kind == "person"
+        else []
+    )
+    context["layout_filters"] = chips(
+        [("layout", "grid", "Grid"), ("layout", "list", "List")], layout
+    )
+    context["back_url"] = link_with_query(
+        reverse("search"),
+        media_type="game" if source == "igdb" else "movie",
+        filter="people"
+        if kind == "person"
+        else "game_studios"
+        if source == "igdb"
+        else "networks"
+        if kind == "network"
+        else "studios",
+        q=data["name"],
+    )
+
     for direction in ("previous", "next"):
         if context.get(direction + "_page"):
             context[direction] = link_with_query(
@@ -320,5 +321,6 @@ def entity(request, source, kind, external_id):
                 q=query,
                 sort=sort,
                 page=context[direction + "_page"],
+                layout=layout,
             )
     return private_render(request, "app/discovery/entity.html", context)

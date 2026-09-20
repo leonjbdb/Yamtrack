@@ -92,6 +92,7 @@ def card(entry):
         "name": entry.name,
         "image": entry.image or settings.IMG_NONE,
         "description": entry.description,
+        "aliases": entry.aliases,
         "url": url_for(entry.source, entry.kind, entry.external_id, entry.name),
     }
 
@@ -131,6 +132,11 @@ def close_matches(query, kinds, sources=None, limit=8):
     if not fragments:
         return []
     terms = Q()
+    for word in text.split()[:6]:
+        if 3 <= len(word) <= 7:
+            terms |= Q(search_text__startswith=word[:2]) | Q(
+                search_text__contains=" " + word[:2]
+            )
     for fragment in fragments:
         terms |= Q(search_text__contains=fragment)
     queryset = DiscoveryEntry.objects.filter(terms, kind__in=kinds)
@@ -138,15 +144,24 @@ def close_matches(query, kinds, sources=None, limit=8):
         queryset = queryset.filter(source__in=sources)
     if not settings.TMDB_NSFW:
         queryset = queryset.exclude(source="tmdb", adult=True)
+    from app.discovery.ranking import score as rank_score
+
     ranked = []
-    for entry in queryset.order_by("-updated_at")[:2000]:
-        score = max(similarity(text, name) for name in [entry.name, *entry.aliases])
-        if score >= 0.72:
+    candidates = (
+        queryset.order_by("-updated_at")[:2000]
+        if len(kinds) == 1
+        else [
+            entry
+            for kind in kinds
+            for entry in queryset.filter(kind=kind).order_by("-updated_at")[:400]
+        ]
+    )
+    for entry in candidates:
+        score = rank_score(text, card(entry))
+        if score >= 400:
             ranked.append((score, entry))
     ranked.sort(key=lambda item: (-item[0], len(item[1].name), item[1].name))
-    return [
-        dict(card(entry), match=round(score * 100)) for score, entry in ranked[:limit]
-    ]
+    return [dict(card(entry), match=score) for score, entry in ranked[:limit]]
 
 
 def link_with_query(path, **params):

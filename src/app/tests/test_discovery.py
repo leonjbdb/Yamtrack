@@ -153,7 +153,9 @@ class DiscoveryTests(TestCase):
         Movie.objects.bulk_create([Movie(item=item, user=self.user, status="Planning")])
         response = self.client.get(path, {"role": "Acting", "type": "movie"})
         self.assertContains(response, "A character")
-        self.assertContains(response, "Planning")
+        self.assertEqual(
+            response.context["entity"]["results"][0]["media"].status, "Planning"
+        )
         self.assertEqual(response["Cache-Control"], "private, no-store")
         self.assertEqual(
             self.client.get(path, {"role": "Director", "department": "Acting"}).context[
@@ -214,8 +216,8 @@ class DiscoveryTests(TestCase):
         self.assertNotIn("tracked", second["results"][0])
         self.assertEqual(request.call_count, 1)
 
-    @patch("app.discovery.providers.search_screen")
-    def test_search_discloses_close_matches_and_keeps_original_query(self, search):
+    @patch("app.providers.services.search")
+    def test_search_ranks_fuzzy_matches_inline_and_keeps_original_query(self, search):
         remember(
             [
                 {
@@ -232,9 +234,11 @@ class DiscoveryTests(TestCase):
             "total_pages": 1,
             "total_results": 0,
         }
-        response = self.client.get(reverse("discover"), {"q": "Interstelar"})
+        response = self.client.get(
+            reverse("search"), {"q": "Interstelar", "media_type": "movie"}
+        )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Close matches")
+        self.assertNotContains(response, "Close matches")
         self.assertContains(response, "Interstelar")
         self.assertContains(response, "Interstellar")
         self.assertEqual(search.call_count, 1)
@@ -285,8 +289,8 @@ class DiscoveryTests(TestCase):
     def test_all_search_categories_render_and_auth_is_required(self):
         response = self.client.get(reverse("discover"))
         self.assertContains(response, "People")
-        self.assertContains(response, "Game studios")
-        self.assertContains(response, 'name="scope"')
+        self.assertContains(response, "Game Companies")
+        self.assertContains(response, 'name="media_type"')
         self.assertEqual(
             self.client.get(reverse("discover"), {"page": "no"}).status_code, 400
         )
@@ -299,9 +303,9 @@ class DiscoveryTests(TestCase):
             ).status_code,
             404,
         )
-        from app.discovery.views import SCOPES
+        from app.discovery.search import CATEGORIES
 
-        for scope, _ in SCOPES:
+        for scope, _ in CATEGORIES:
             with self.subTest(scope=scope):
                 self.assertEqual(
                     self.client.get(reverse("discover"), {"scope": scope}).status_code,

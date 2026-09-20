@@ -198,18 +198,28 @@ def sources(media_type):
 
 @register.simple_tag
 def get_search_media_types(user):
-    """Return available media types for search based on user preferences."""
-    enabled_types = user.get_enabled_media_types()
+    from app.discovery.search import categories
 
-    # Filter and format the types for search
-    return [
-        {
-            "display": media_type_readable_plural(media_type),
-            "value": media_type,
-        }
-        for media_type in enabled_types
-        if media_type != MediaTypes.SEASON.value
-    ]
+    return [{"display": label, "value": key} for key, label in categories(user)]
+
+
+@register.simple_tag(takes_context=True)
+def get_search_selection(context):
+    from app.discovery.search import CATEGORIES
+
+    user = context["user"]
+    category = (
+        context.get("search_category")
+        or context.get("search_media_type")
+        or context.get("media_type")
+        or user.last_search_type
+    )
+    if category == "season":
+        category = "tv"
+    labels = dict(CATEGORIES)
+    if category not in labels:
+        category = "all"
+    return {"display": labels[category], "value": category}
 
 
 @register.simple_tag
@@ -528,20 +538,3 @@ def seconds_to_duration(seconds):
     if minutes >= 45:  # noqa: PLR2004
         return f"{hours + 1}h"
     return f"{hours}h" if minutes < 15 else f"{hours}h 30m"  # noqa: PLR2004
-
-
-@register.simple_tag
-def get_discovery_types():
-    from app.discovery.views import SCOPES
-
-    return [{"display": label, "value": key} for key, label in SCOPES]
-
-
-@register.simple_tag(takes_context=True)
-def get_discovery_selection(context):
-    from app.discovery.views import SCOPES
-
-    scope = context.get("scope") or context.get("media_type") or "screen"
-    if scope not in dict(SCOPES):
-        scope = "screen"
-    return {"display": dict(SCOPES)[scope], "value": scope}
