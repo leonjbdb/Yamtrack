@@ -10,8 +10,9 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 
-from app.providers import services, tmdb, igdb
 from app.discovery.catalogue import remember, url_for
+from app.discovery.prominence import audience
+from app.providers import igdb, services, tmdb
 
 
 def tmdb_request(path, **params):
@@ -48,6 +49,11 @@ def entity_card(raw, kind, source="tmdb"):
         "image": image,
         "aliases": raw.get("also_known_as", []),
         "adult": raw.get("adult", False),
+        **(
+            {"prominence": audience((raw["popularity"], 100, 1))}
+            if "popularity" in raw
+            else {}
+        ),
         "description": raw.get("known_for_department") or raw.get("origin_country", ""),
     }
     return dict(entry, url=url_for(source, kind, raw["id"]))
@@ -78,6 +84,9 @@ def media_card(raw, kind=None):
         url=url_for("tmdb", kind, raw["id"], name),
         date=date,
         popularity=raw.get("popularity", 0) or 0,
+        prominence=audience(
+            (raw.get("vote_count"), 25000, 1), (raw.get("popularity"), 200, 0.85)
+        ),
         rating=raw.get("vote_average", 0) or 0,
     )
 

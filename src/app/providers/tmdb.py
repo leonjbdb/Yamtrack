@@ -7,6 +7,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app import helpers
+from app.discovery.prominence import audience
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -72,7 +73,7 @@ def get_external_links(external_ids, tmdb_id=None):
 
 def search(media_type, query, page):
     """Search for media on TMDB."""
-    cache_key = f"search_{Sources.TMDB.value}_{media_type}_{query}_{page}"
+    cache_key = f"search_v2_{Sources.TMDB.value}_{media_type}_{query}_{page}"
     data = cache.get(cache_key)
 
     if data is None:
@@ -103,6 +104,10 @@ def search(media_type, query, page):
                 "source": Sources.TMDB.value,
                 "media_type": media_type,
                 "title": get_title(media),
+                "prominence": audience(
+                    (media.get("vote_count"), 25000, 1),
+                    (media.get("popularity"), 200, 0.85),
+                ),
                 "image": get_image_url(media["poster_path"]),
             }
             for media in response["results"]

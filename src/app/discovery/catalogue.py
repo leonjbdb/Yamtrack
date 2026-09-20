@@ -67,6 +67,9 @@ def remember(entries):
                     row.get("description") or (previous.description if previous else "")
                 )[:500],
                 adult=bool(row.get("adult", previous.adult if previous else False)),
+                prominence=row.get(
+                    "prominence", previous.prominence if previous else 0
+                ),
             )
         )
     DiscoveryEntry.objects.bulk_create(
@@ -80,6 +83,7 @@ def remember(entries):
             "image",
             "description",
             "adult",
+            "prominence",
             "updated_at",
         ],
     )
@@ -94,6 +98,7 @@ def card(entry):
         "image": entry.image or settings.IMG_NONE,
         "description": entry.description,
         "aliases": entry.aliases,
+        "prominence": entry.prominence,
         "url": url_for(entry.source, entry.kind, entry.external_id, entry.name),
     }
 
@@ -145,6 +150,7 @@ def close_matches(query, kinds, sources=None, limit=8):
         queryset = queryset.filter(source__in=sources)
     if not settings.TMDB_NSFW:
         queryset = queryset.exclude(source="tmdb", adult=True)
+    from app.discovery.ranking import merge_ranked
     from app.discovery.ranking import score as rank_score
 
     ranked = []
@@ -160,9 +166,8 @@ def close_matches(query, kinds, sources=None, limit=8):
     for entry in candidates:
         score = rank_score(text, card(entry))
         if score >= 400:
-            ranked.append((score, entry))
-    ranked.sort(key=lambda item: (-item[0], len(item[1].name), item[1].name))
-    return [dict(card(entry), match=score) for score, entry in ranked[:limit]]
+            ranked.append(dict(card(entry), match=score))
+    return merge_ranked(query, [], ranked)[:limit]
 
 
 def link_with_query(path, **params):

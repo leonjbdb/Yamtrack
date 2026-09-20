@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from app import helpers
+from app.discovery.prominence import audience
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -35,7 +36,7 @@ def handle_error(error):
 def search(query, page):
     """Search for board games on BoardGameGeek."""
     cache_key = (
-        f"search_{Sources.BGG.value}_{MediaTypes.BOARDGAME.value}_{query}_{page}"
+        f"search_v2_{Sources.BGG.value}_{MediaTypes.BOARDGAME.value}_{query}_{page}"
     )
     data = cache.get(cache_key)
 
@@ -81,7 +82,7 @@ def search(query, page):
         page_results = all_results[start_idx:end_idx]
 
         # Fetch thumbnails for this page
-        thumbnails = _fetch_thumbnails([r["id"] for r in page_results])
+        details = _fetch_search_details([r["id"] for r in page_results])
 
         results = [
             {
@@ -89,7 +90,8 @@ def search(query, page):
                 "source": Sources.BGG.value,
                 "media_type": MediaTypes.BOARDGAME.value,
                 "title": r["name"],
-                "image": thumbnails.get(r["id"], settings.IMG_NONE),
+                "image": details.get(r["id"], {}).get("image", settings.IMG_NONE),
+                "prominence": details.get(r["id"], {}).get("prominence", 0),
             }
             for r in page_results
         ]
@@ -106,8 +108,8 @@ def search(query, page):
     return data
 
 
-def _fetch_thumbnails(game_ids):
-    """Fetch thumbnail images for a list of game IDs."""
+def _fetch_search_details(game_ids):
+    """Fetch images and audience counts in the existing per-page batch."""
     if not game_ids:
         return {}
 
@@ -116,26 +118,29 @@ def _fetch_thumbnails(game_ids):
             Sources.BGG.value,
             "GET",
             f"{base_url}/thing",
-            params={"id": ",".join(game_ids)},
+            params={"id": ",".join(game_ids), "stats": "1"},
             headers={"Authorization": f"Bearer {settings.BGG_API_TOKEN}"},
             response_format="xml",
         )
 
-        thumbnails = {}
+        details = {}
         for item in root.findall(".//item"):
             game_id = item.get("id")
+            details[game_id] = {
+                "prominence": audience((get_score_count(item), 100000, 1))
+            }
             thumbnail_elem = item.find("thumbnail")
             if thumbnail_elem is not None and thumbnail_elem.text:
-                thumbnails[game_id] = thumbnail_elem.text
+                details[game_id]["image"] = thumbnail_elem.text
             else:
                 image_elem = item.find("image")
                 if image_elem is not None and image_elem.text:
-                    thumbnails[game_id] = image_elem.text
+                    details[game_id]["image"] = image_elem.text
     except (requests.exceptions.HTTPError, services.ProviderAPIError):
         logger.exception("Failed to fetch thumbnails from BGG")
         return {}
     else:
-        return thumbnails
+        return details
 
 
 def boardgame(media_id):

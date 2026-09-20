@@ -782,7 +782,17 @@ class Status(models.TextChoices):
     DROPPED = "Dropped", "Dropped"
 
 
+class MovieStatus(models.TextChoices):
+    COMPLETED = "Completed", "Completed"
+    IN_PROGRESS = "In progress", "In Progress"
+    PLANNING = "Planning", "Planning"
+    OWNED = "Owned", "Owned"
+    PAUSED = "Paused", "Paused"
+    DROPPED = "Dropped", "Dropped"
+
+
 class GameStatus(models.TextChoices):
+    OWNED = "Owned", "Owned"
     PLANNED = "Planned", "Planned"
     PLAYED = "Played", "Played"
     IN_PROGRESS = "In progress", "In Progress"
@@ -796,7 +806,10 @@ def normalize_game_status(status):
 
 
 def status_choices(media_type, include_all=False):
-    choices = GameStatus.choices if media_type == MediaTypes.GAME else Status.choices
+    choices = {
+        MediaTypes.GAME: GameStatus.choices,
+        MediaTypes.MOVIE: MovieStatus.choices,
+    }.get(media_type, Status.choices)
     return [("All", "All"), *choices] if include_all else choices
 
 
@@ -1923,6 +1936,10 @@ class Anime(Media):
 class Movie(Media):
     """Model for movies."""
 
+    status = models.CharField(
+        max_length=20, choices=MovieStatus, default=MovieStatus.COMPLETED
+    )
+
     tracker = FieldTracker()
 
 
@@ -2016,6 +2033,7 @@ class DiscoveryEntry(models.Model):
     image = models.TextField(blank=True)
     description = models.CharField(max_length=500, blank=True)
     adult = models.BooleanField(default=False)
+    prominence = models.FloatField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

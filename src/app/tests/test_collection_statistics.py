@@ -1,5 +1,6 @@
 from datetime import timedelta
 from unittest.mock import patch
+
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -7,13 +8,14 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from app.collection_statistics import dashboard, public_facts, duration, TYPES
+
+from app.collection_statistics import TYPES, dashboard, duration, public_facts
 from app.forms import GameForm, MovieForm
 from app.models import (
-    Item,
     CollectionFacts,
-    Game,
     Episode,
+    Game,
+    Item,
 )
 
 
@@ -212,7 +214,7 @@ class GameStatusTests(CollectionFixtures, TestCase):
     def test_game_forms_only_offer_new_states(self):
         self.assertEqual(
             list(dict(GameForm().fields["status"].choices)),
-            ["Planned", "Played", "In progress", "Dropped"],
+            ["Owned", "Planned", "Played", "In progress", "Dropped"],
         )
         self.assertIn("Completed", dict(MovieForm().fields["status"].choices))
         self.assertNotIn("Played", dict(MovieForm().fields["status"].choices))
@@ -336,7 +338,8 @@ class WatchTimeTests(CollectionFixtures, TestCase):
 
     @patch("app.tasks.refresh_collection_facts.delay")
     def test_complete_paginated_table_and_csv_are_private(self, enqueue):
-        import csv, io
+        import csv
+        import io
 
         for _ in range(53):
             self.record("movie", facts={"runtime": 91})
@@ -370,3 +373,43 @@ class WatchTimeTests(CollectionFixtures, TestCase):
                 for r in csv.DictReader(io.StringIO(filtered.content.decode()))
             )
         )
+
+
+class OwnedStatusTests(CollectionFixtures, TestCase):
+    def test_owned_choices_are_limited_to_games_and_movies(self):
+        from app.forms import get_form_class
+        from app.models import status_choices
+
+        for kind in TYPES:
+            if kind == "season":
+                continue
+            choices = dict(get_form_class(kind)().fields["status"].choices)
+            self.assertEqual("Owned" in choices, kind in ("game", "movie"))
+            self.assertEqual(
+                "Owned" in dict(status_choices(kind)), kind in ("game", "movie")
+            )
+        form = MovieForm(
+            {
+                "media_id": "1",
+                "source": "tmdb",
+                "media_type": "movie",
+                "status": "Owned",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_ownership_does_not_count_as_viewing_or_completion(self):
+        self.record("movie", status="Owned", facts={"runtime": 120})
+        self.record("game", status="Owned", facts={})
+        data = dashboard(self.user)
+        self.assertEqual(data["titles"], 2)
+        self.assertEqual(data["playing"], "0h 00m")
+        self.assertEqual(data["viewing"], "0h 00m")
+        owned = [record for record in data["records"] if record["status"] == "Owned"]
+        self.assertEqual(len(owned), 2)
+        self.user.movie_status = "Owned"
+        self.user.game_status = "Owned"
+        self.user.list_detail_status = "Owned"
+        self.user.save()
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.movie_status, "Owned")

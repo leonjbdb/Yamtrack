@@ -10,11 +10,18 @@ from django.views.decorators.debug import sensitive_variables
 from simple_history.utils import bulk_create_with_history, bulk_update_with_history
 
 from app.mixins import disable_fetch_releases
-from app.models import Game, Item, MediaTypes, Sources, GameStatus
+from app.models import Game, GameStatus, Item, MediaTypes, Sources
 from app.providers import igdb, services
+
 from .credentials import decrypt
 from .models import GameConnection, LibraryGame
-from .providers import ConnectionFailure, itch_identity, itch_library, steam_library
+from .providers import (
+    ConnectionFailure,
+    itch_identity,
+    itch_library,
+    steam_library,
+    steam_wishlist,
+)
 
 
 def resolve_game(provider, game):
@@ -31,8 +38,8 @@ def resolve_game(provider, game):
     )
 
 
-def apply_library(connection, games, metadata):
-    """Preserve manual ratings, notes, finished/dropped statuses and existing games."""
+def apply_library(connection, games, metadata, *, owned=True):
+    """Sync one membership type without deleting tracking or demoting activity."""
     matched = 0
     with disable_fetch_releases():
         for entry in games:
@@ -45,7 +52,7 @@ def apply_library(connection, games, metadata):
                     media_type=MediaTypes.GAME,
                     defaults={"title": data["title"], "image": data["image"]},
                 )
-                status = GameStatus.PLANNED
+                status = GameStatus.OWNED if owned else GameStatus.PLANNED
                 if entry.minutes:
                     status = (
                         GameStatus.IN_PROGRESS
@@ -65,23 +72,39 @@ def apply_library(connection, games, metadata):
                         progress=entry.minutes or 0,
                     )
                     bulk_create_with_history([game], Game)
-                elif entry.minutes is not None:
-                    game.progress = max(game.progress, entry.minutes)
-                    if game.status in (
-                        GameStatus.PLANNED,
-                        GameStatus.IN_PROGRESS,
-                        GameStatus.PLAYED,
+                elif owned:
+                    changed = []
+                    if entry.minutes is not None:
+                        progress = max(game.progress, entry.minutes)
+                        if progress != game.progress:
+                            game.progress = progress
+                            changed.append("progress")
+                    # Purchasing a planned title promotes it. A zero-playtime
+                    # response never erases a manually recorded active/played state.
+                    if game.status in (GameStatus.PLANNED, GameStatus.OWNED) or (
+                        entry.minutes
+                        and game.status in (GameStatus.PLAYED, GameStatus.IN_PROGRESS)
                     ):
-                        game.status = status
-                    bulk_update_with_history([game], Game, ["progress", "status"])
+                        if game.status != status:
+                            game.status = status
+                            changed.append("status")
+                    if changed:
+                        bulk_update_with_history([game], Game, changed)
                 matched += 1
             LibraryGame.objects.update_or_create(
                 connection=connection,
                 external_id=entry.external_id,
-                defaults={"title": entry.title, "minutes": entry.minutes, "item": item},
+                defaults={
+                    "title": data["title"] if data else entry.title,
+                    "minutes": entry.minutes,
+                    "item": item,
+                    "owned": owned,
+                },
             )
     # A successful fetch updates membership only. Never delete tracked games.
-    connection.library.exclude(external_id__in=[g.external_id for g in games]).delete()
+    connection.library.filter(owned=owned).exclude(
+        external_id__in=[g.external_id for g in games]
+    ).delete()
     return matched
 
 
@@ -119,6 +142,24 @@ def sync_connection(connection_id):
         else:
             raise ConnectionFailure("Unsupported game service.")
         metadata = {g.external_id: resolve_game(connection.provider, g) for g in games}
+        wishlist = None
+        wishlist_metadata = {}
+        wishlist_error = ""
+        if connection.provider == "steam":
+            try:
+                owned_ids = {g.external_id for g in games}
+                wishlist = [
+                    g
+                    for g in steam_wishlist(api_key, connection.external_id)
+                    if g.external_id not in owned_ids
+                ]
+                wishlist_metadata = {
+                    g.external_id: resolve_game(connection.provider, g)
+                    for g in wishlist
+                }
+            except Exception:
+                wishlist = None
+                wishlist_error = "Wishlist sync unavailable; existing wishlist entries were kept. Library sync succeeded."
         with transaction.atomic():
             current = (
                 GameConnection.objects.select_for_update()
@@ -133,12 +174,28 @@ def sync_connection(connection_id):
             if not current:
                 return
             matched = apply_library(current, games, metadata)
+            if connection.provider == "steam":
+                if wishlist is not None:
+                    wishlist_matched = apply_library(
+                        current, wishlist, wishlist_metadata, owned=False
+                    )
+                    current.last_wishlist_success = timezone.now()
+                    current.wishlist_status = f"{len(wishlist)} wishlist games; {wishlist_matched} matched; {len(wishlist) - wishlist_matched} unmatched."
+                else:
+                    current.wishlist_status = wishlist_error
             current.last_success = timezone.now()
             current.status = f"{len(games)} library games; {matched} matched to IGDB; {len(games) - matched} unmatched."
             current.lease = None
             current.busy_until = None
             current.save(
-                update_fields=["last_success", "status", "lease", "busy_until"]
+                update_fields=[
+                    "last_success",
+                    "status",
+                    "lease",
+                    "busy_until",
+                    "wishlist_status",
+                    "last_wishlist_success",
+                ]
             )
     except Exception as error:
         # Do not propagate request/response objects, credentials or provider error bodies

@@ -155,7 +155,7 @@ def media_status_readable(media_status):
     """Return the readable media status."""
     return (
         media_status
-        if media_status in ("Played", "Planned")
+        if media_status in ("Played", "Planned", "Owned")
         else Status(media_status).label
     )
 

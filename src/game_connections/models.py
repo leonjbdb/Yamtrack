@@ -20,6 +20,8 @@ class GameConnection(models.Model):
     last_attempt = models.DateTimeField(null=True)
     last_success = models.DateTimeField(null=True)
     status = models.CharField(max_length=200, default="Ready to sync")
+    wishlist_status = models.CharField(max_length=200, blank=True)
+    last_wishlist_success = models.DateTimeField(null=True)
     generation = models.UUIDField(default=uuid.uuid4, editable=False)
     lease = models.UUIDField(null=True, editable=False)
     busy_until = models.DateTimeField(null=True, editable=False)
@@ -45,6 +47,7 @@ class LibraryGame(models.Model):
     external_id = models.CharField(max_length=32)
     title = models.CharField(max_length=500)
     minutes = models.PositiveIntegerField(null=True)
+    owned = models.BooleanField(default=True)
     item = models.ForeignKey("app.Item", null=True, on_delete=models.SET_NULL)
 
     class Meta:

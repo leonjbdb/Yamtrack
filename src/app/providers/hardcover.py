@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from app import helpers
+from app.discovery.prominence import audience
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -54,7 +55,7 @@ def search(query, page):
     """Search for books on Hardcover."""
     query = cap_search_query(query)
     cache_key = (
-        f"search_{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_{query}_{page}"
+        f"search_v2_{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_{query}_{page}"
     )
     data = cache.get(cache_key)
 
@@ -96,6 +97,10 @@ def search(query, page):
                 "source": Sources.HARDCOVER.value,
                 "media_type": MediaTypes.BOOK.value,
                 "title": hit["document"]["title"],
+                "prominence": audience(
+                    (hit["document"].get("users_count"), 100000, 1),
+                    (hit["document"].get("ratings_count"), 10000, 1),
+                ),
                 "image": get_image_url(hit["document"]),
             }
             for hit in hits

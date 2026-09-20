@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from app import helpers
+from app.discovery.prominence import audience
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -45,9 +46,7 @@ def handle_error(error):
 
 def search(query, page):
     """Search for media on MangaUpdates."""
-    cache_key = (
-        f"search_{Sources.MANGAUPDATES.value}_{MediaTypes.MANGA.value}_{query}_{page}"
-    )
+    cache_key = f"search_v2_{Sources.MANGAUPDATES.value}_{MediaTypes.MANGA.value}_{query}_{page}"
     data = cache.get(cache_key)
 
     if data is None:
@@ -83,6 +82,7 @@ def search(query, page):
                 "source": Sources.MANGAUPDATES.value,
                 "media_type": MediaTypes.MANGA.value,
                 "title": media["record"]["title"],
+                "prominence": audience((media["record"].get("rating_votes"), 10000, 1)),
                 "image": get_image_url(media["record"]),
             }
             for media in response["results"]

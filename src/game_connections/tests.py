@@ -10,6 +10,7 @@ from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from app.models import Game, Item, MediaTypes, Sources, Status
+
 from . import openid
 from .credentials import decrypt, encrypt
 from .models import GameConnection, LibraryGame
@@ -20,6 +21,7 @@ from .providers import (
     itch_identity,
     itch_library,
     steam_library,
+    steam_wishlist,
 )
 from .sync import sync_connection
 
@@ -30,6 +32,9 @@ KEY = "a" * 32
 class ConnectionFixtures:
     def setUp(self):
         cache.clear()
+        wishlist_patch = patch("game_connections.sync.steam_wishlist", return_value=[])
+        self.wishlist = wishlist_patch.start()
+        self.addCleanup(wishlist_patch.stop)
         self.user = get_user_model().objects.create_user(
             username="owner", password="test"
         )
@@ -381,3 +386,111 @@ class OpenIDTests(ConnectionFixtures, TestCase):
             self.client.get("/connections/steam/callback", params)
             self.assertNotIn("verified_steam", self.client.session)
         post.assert_not_called()
+
+
+class OwnershipSyncTests(ConnectionFixtures, TestCase):
+    @patch("game_connections.sync.resolve_game")
+    @patch("game_connections.sync.steam_library")
+    def test_purchase_wishlist_removal_and_dropped_preservation(self, library, resolve):
+        resolve.side_effect = lambda provider, entry: {
+            "media_id": entry.external_id,
+            "title": "Game " + entry.external_id,
+            "image": "",
+        }
+        library.return_value = [OwnedGame("1", "Owned game", 0)]
+        self.wishlist.return_value = [
+            OwnedGame("2", "Wishlist game", owned=False),
+            OwnedGame("1", "Also wished", owned=False),
+        ]
+        connection = self.connection()
+        sync_connection(connection.pk)
+        self.assertEqual(
+            dict(Game.objects.values_list("item__media_id", "status")),
+            {"1": "Owned", "2": "Planned"},
+        )
+        self.assertEqual(connection.library.filter(owned=True).count(), 1)
+        self.assertEqual(connection.library.filter(owned=False).count(), 1)
+        wished = Game.objects.get(item__media_id="2")
+        Game.objects.filter(pk=wished.pk).update(notes="Keep", score=8)
+        library.return_value.append(OwnedGame("2", "Purchased", 0))
+        sync_connection(connection.pk)
+        wished.refresh_from_db()
+        self.assertEqual(
+            (wished.status, wished.notes, wished.score), ("Owned", "Keep", 8)
+        )
+        Game.objects.filter(pk=wished.pk).update(status="Dropped")
+        library.return_value = []
+        self.wishlist.return_value = []
+        sync_connection(connection.pk)
+        wished.refresh_from_db()
+        self.assertEqual(wished.status, "Dropped")
+        self.assertEqual(Game.objects.count(), 2)
+        self.assertFalse(connection.library.exists())
+        library.return_value = [OwnedGame("2", "Purchased", 120, 30)]
+        sync_connection(connection.pk)
+        wished.refresh_from_db()
+        self.assertEqual((wished.status, wished.progress), ("Dropped", 120))
+
+    @patch("game_connections.sync.resolve_game")
+    @patch("game_connections.sync.steam_library")
+    def test_wishlist_failure_keeps_membership_and_owned_sync_succeeds(
+        self, library, resolve
+    ):
+        connection = self.connection()
+        LibraryGame.objects.create(
+            connection=connection, external_id="9", title="Old wishlist", owned=False
+        )
+        self.wishlist.side_effect = ConnectionFailure("Unavailable")
+        library.return_value = [OwnedGame("1", "New purchase", 0)]
+        resolve.return_value = {"media_id": "1", "title": "New purchase", "image": ""}
+        sync_connection(connection.pk)
+        connection.refresh_from_db()
+        self.assertEqual(Game.objects.get().status, "Owned")
+        self.assertTrue(
+            connection.library.filter(external_id="9", owned=False).exists()
+        )
+        self.assertIn("unavailable", connection.wishlist_status)
+        self.assertIsNotNone(connection.last_success)
+        self.assertIsNone(connection.last_wishlist_success)
+
+    @patch("game_connections.sync.resolve_game")
+    @patch("game_connections.sync.itch_library")
+    @patch("game_connections.sync.itch_identity", return_value="123")
+    def test_itch_owned_promotes_planned_without_erasing_manual_activity(
+        self, identity, library, resolve
+    ):
+        connection = self.connection(provider="itch", external_id="123")
+        library.return_value = [OwnedGame("1", "An itch game")]
+        resolve.return_value = {"media_id": "1", "title": "An itch game", "image": ""}
+        sync_connection(connection.pk)
+        game = Game.objects.get()
+        self.assertEqual(game.status, "Owned")
+        for status, expected in [
+            ("Planned", "Owned"),
+            ("Played", "Played"),
+            ("In progress", "In progress"),
+            ("Dropped", "Dropped"),
+        ]:
+            Game.objects.filter(pk=game.pk).update(status=status, progress=60)
+            sync_connection(connection.pk)
+            game.refresh_from_db()
+            self.assertEqual((game.status, game.progress), (expected, 60))
+
+    @patch("game_connections.providers.api_get")
+    def test_wishlist_requires_explicit_valid_items_and_uses_private_header(self, get):
+        get.return_value = {"response": {"items": [{"appid": 42, "priority": 0}]}}
+        rows = steam_wishlist(KEY, STEAM_ID)
+        self.assertEqual((rows[0].external_id, rows[0].owned), ("42", False))
+        self.assertEqual(get.call_args.args[1], {"x-webapi-key": KEY})
+        self.assertNotIn(KEY, str(get.call_args.args[2]))
+        get.return_value = {"response": {"items": []}}
+        self.assertEqual(steam_wishlist(KEY, STEAM_ID), [])
+        for payload in [
+            {},
+            {"items": None},
+            {"items": [{"appid": -1}]},
+            {"items": [{"appid": 1}, {"appid": 1}]},
+        ]:
+            get.return_value = {"response": payload}
+            with self.assertRaises(ConnectionFailure):
+                steam_wishlist(KEY, STEAM_ID)

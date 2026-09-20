@@ -54,7 +54,18 @@ class MediaStatusChoices(models.TextChoices):
     DROPPED = Status.DROPPED.value, Status.DROPPED.label
 
 
+class MovieFilterChoices(models.TextChoices):
+    ALL = "All", "All"
+    COMPLETED = "Completed", "Completed"
+    IN_PROGRESS = "In progress", "In Progress"
+    PLANNING = "Planning", "Planning"
+    OWNED = "Owned", "Owned"
+    PAUSED = "Paused", "Paused"
+    DROPPED = "Dropped", "Dropped"
+
+
 class GameFilterChoices(models.TextChoices):
+    OWNED = "Owned", "Owned"
     ALL = "All", "All"
     PLANNED = "Planned", "Planned"
     PLAYED = "Played", "Played"
@@ -63,6 +74,7 @@ class GameFilterChoices(models.TextChoices):
 
 
 class CollectionFilterChoices(models.TextChoices):
+    OWNED = "Owned", "Owned"
     ALL = "All", "All"
     COMPLETED = "Completed", "Completed"
     PLANNING = "Planning", "Planning"
@@ -211,8 +223,8 @@ class User(AbstractUser):
     )
     movie_status = models.CharField(
         max_length=20,
-        default=MediaStatusChoices.ALL,
-        choices=MediaStatusChoices,
+        default=MovieFilterChoices.ALL,
+        choices=MovieFilterChoices,
     )
 
     # Media type preferences: Anime
@@ -548,7 +560,7 @@ class User(AbstractUser):
             ),
             models.CheckConstraint(
                 name="movie_status_valid",
-                condition=models.Q(movie_status__in=MediaStatusChoices.values),
+                condition=models.Q(movie_status__in=MovieFilterChoices.values),
             ),
             models.CheckConstraint(
                 name="anime_status_valid",

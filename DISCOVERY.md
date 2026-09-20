@@ -24,7 +24,7 @@ developer, publisher, porting and support relationships.
 
 Provider results and indexed candidates form one deduplicated list, keyed by
 source, media type and catalogue ID. There is no separate Close matches section.
-Ranking weights enforce the following precedence:
+Textual relevance supplies these base scores:
 
 | Match | Base score |
 | --- | ---: |
@@ -41,7 +41,7 @@ Ranking weights enforce the following precedence:
 Aliases receive a 20-point penalty relative to title matches. Provider order adds
 at most five points, including results from corrected-word queries. Matches from
 the submitted query receive another five-point preference over expansion results
-of equal textual quality. Neither bonus can move a fuzzy result above an exact title. Subtitle length is only a weak penalty;
+of equal textual quality. Subtitle length is only a weak penalty;
 it must not bury relevant feature films below short documentary titles. Case,
 punctuation and accents are normalized. Damerau-Levenshtein matching supports
 insertions, deletions, substitutions and adjacent transpositions: no typo for
@@ -52,6 +52,31 @@ distinct title word. Apostrophes and superscript numbers normalize consistently.
 Tests cover exact-first ordering, Alien/Aliens/Alien³, Batman, Terminator, Star
 Wars, Harry Potter, Lord of the Rings, Jurassic Park, Baldur's Gate, Christopher
 Nolan, Sigourney Weaver, accents, aliases, unrelated titles and short queries.
+
+Public audience evidence adds up to 360 points, only when every query token
+matches the title or an alias. Counts are log-scaled after dividing by 1% of
+an established-audience cap; a few votes must not count as a large audience.
+Signals are capped, and the strongest signal wins rather than double-counting
+correlated readership and votes. Average ratings do not measure prominence.
+Exact queries receive 80 extra points per specific word beyond two (maximum
+240); English function words do not inflate that specificity bonus. Thus a broad
+franchise query can favor established novels over obscure short exact titles,
+while a precise full-title query retains its intent.
+
+Signals: Open Library reading-log counts (cap 10,000), rating counts (1,000),
+and edition counts (300, weight 0.35); Hardcover readership (100,000) and ratings
+(10,000); TMDB votes (25,000) and popularity (200, weight 0.85); TMDB people
+popularity (100); IGDB rating counts (2,000) and hypes (500, weight 0.75);
+MyAnimeList list users (1,000,000) and rating users (500,000); MangaUpdates
+rating votes (10,000); BGG rating users (100,000). These are bounded relevance
+heuristics, not comparisons of audience totals across services. Missing evidence
+is neutral. ComicVine, TVDB, studios and networks retain textual/provider
+relevance where no audience measure is exposed; no fame is inferred from issue
+counts or credits. Existing pagination/candidate limits still apply, so this is
+ranking of retrieved candidates, not a global popularity index. No additional
+per-title requests are made: BGG statistics join the existing page image batch.
+Migration 0068 preserves normalized public prominence in the shared name index;
+metadata without audience fields does not erase a previously learned signal.
 
 Candidate selection uses trigrams and short prefixes, bounded to 2,000 records
 for one type or 400 per type for All Search. This prevents the larger people

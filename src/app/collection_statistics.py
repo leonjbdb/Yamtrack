@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from app import config
 from app.models import CollectionFacts, Episode
-from app.watchtime import duration, hour_text, episode_runtime, anime_minutes, breakdown
+from app.watchtime import anime_minutes, breakdown, duration, episode_runtime, hour_text
 
 TYPES = [
     "game",
@@ -343,6 +343,7 @@ def dashboard(user, kind="all", months=12):
             eras[str(row["facts"]["year"] // 10 * 10) + "s"] += 1
         sources[row["item__source"]] += 1
     status_order = [
+        "Owned",
         "Planned",
         "Played",
         "Planning",

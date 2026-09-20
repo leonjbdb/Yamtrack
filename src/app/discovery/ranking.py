@@ -1,5 +1,6 @@
-"""Deterministic textual ranking; provider order is a bounded tie-breaker."""
+"""Text relevance blended with bounded public audience evidence."""
 
+import math
 from collections import Counter
 
 from app.discovery.catalogue import normalize
@@ -113,7 +114,7 @@ def score(query, row):
 
 
 def merge_ranked(query, direct, indexed):
-    """One identity per result, exact names first, no separate suggestion tier."""
+    """One ranked list; popularity helps relevant works, not unrelated matches."""
     merged = {}
     for position, row in enumerate(direct):
         identity = (row["source"], row["kind"], str(row["external_id"]))
@@ -128,18 +129,40 @@ def merge_ranked(query, direct, indexed):
             merged[identity]["_provider_order"] = min(
                 merged[identity]["_provider_order"], row.get("_provider_order", 10000)
             )
+            if "prominence" not in merged[identity] and "prominence" in row:
+                merged[identity]["prominence"] = row["prominence"]
             merged[identity]["aliases"] = list(
                 dict.fromkeys(
                     [*merged[identity].get("aliases", []), *row.get("aliases", [])]
                 )
             )
 
+    # Function words do not make a broad franchise query more specific. They
+    # remain part of title matching; this only controls the exact-title bonus.
+    specific_words = [
+        word
+        for word in normalize(query).split()
+        if word not in {"a", "an", "the", "of", "and", "or", "in", "on", "for", "to"}
+    ]
+
     def order(row):
         relevance = score(query, row)
-        # Provider relevance orders aliases and other provider matches that do
-        # not literally occur in the displayed title. It cannot outrank text.
+        try:
+            prominence = float(row.get("prominence", 0))
+        except (TypeError, ValueError):
+            prominence = 0
+        prominence = min(1, max(0, prominence)) if math.isfinite(prominence) else 0
+        # Every query token must match before audience size can help. Log-scaled
+        # evidence may lift a famous franchise novel over an obscure exact-name
+        # tie, while precise full titles retain a stronger exact-match benefit.
+        popularity_bonus = 360 * prominence if relevance >= 400 else 0
+        exact_bonus = (
+            min(240, max(0, len(specific_words) - 2) * 80) if relevance >= 980 else 0
+        )
         weight = (
             (relevance if relevance else 200)
+            + popularity_bonus
+            + exact_bonus
             + (5 if row.get("_direct") else 0)
             + 5 / (1 + row["_provider_order"])
         )

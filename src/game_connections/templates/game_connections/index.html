@@ -12,6 +12,7 @@
     {% if card.connection %}
       <p>Connected account: {{ card.connection.external_id }}</p>
       <p class="text-gray-400">{{ card.connection.status }}</p>
+      {% if card.provider == 'steam' %}<p class="text-gray-400">{{ card.connection.wishlist_status }}</p><p class="text-gray-400 text-sm">Last successful wishlist sync: {{ card.connection.last_wishlist_success|default:"Not yet synced" }}</p>{% endif %}
       <p class="text-gray-400 text-sm">Last successful sync: {{ card.connection.last_success|default:"Not yet synced" }}</p>
       <p class="text-gray-400 text-sm">{% if card.connection.enabled %}Automatic sync: daily{% else %}Sync paused{% endif %}</p>
       <form method="post" action="{% url 'game_connections:action' card.provider %}" class="flex gap-4 flex-wrap">
@@ -23,7 +24,7 @@
       <p class="text-gray-400 text-sm">Disconnect removes the stored key and connection. Games already tracked in Yamtrack remain. Reconnect to replace a key.</p>
       {% if card.unmatched %}
       <details><summary class="cursor-pointer">Games without an IGDB match (up to 100 shown)</summary>
-        <ul class="mt-2 space-y-1">{% for game in card.unmatched %}<li>{{ game.title }}</li>{% endfor %}</ul>
+        <ul class="mt-2 space-y-1">{% for game in card.unmatched %}<li>{{ game.title }} · {% if game.owned %}Owned{% else %}Wishlist{% endif %}</li>{% endfor %}</ul>
         <p class="text-gray-400 text-sm mt-2">These stay in your connection library and are retried on the next sync.</p>
       </details>
       {% endif %}
@@ -49,6 +50,6 @@
     {% endif %}
   </section>
   {% endfor %}
-  <p class="text-gray-400 text-sm">Sync adds matched games and updates Steam playtime. Existing ratings and notes are preserved. Dropped games stay Dropped; other games follow recent play activity. Removing games from a store never deletes your tracking history.</p>
+  <p class="text-gray-400 text-sm">Sync adds unplayed library games as Owned and available Steam wishlist games as Planned. Played and In Progress follow Steam activity. Wishlist removal never deletes tracked games. Sync updates Steam playtime. Existing ratings and notes are preserved. Dropped games stay Dropped; other games follow recent play activity. Removing games from a store never deletes your tracking history.</p>
 </div>
 {% endblock settings_content %}

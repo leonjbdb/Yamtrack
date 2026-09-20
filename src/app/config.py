@@ -265,6 +265,13 @@ STATUS_CONFIG = {
     },
 }
 
+STATUS_CONFIG["Owned"] = {
+    "text_color": COLORS["orange"]["text"],
+    "stats_color": COLORS["orange"]["hex"],
+    "background_color": COLORS["orange"]["background"],
+    "background_color_strong": COLORS["orange"]["background_strong"],
+    "icon": "app/icons/states/owned.svg",
+}
 STATUS_CONFIG["Played"] = STATUS_CONFIG[Status.COMPLETED.value]
 STATUS_CONFIG["Planned"] = STATUS_CONFIG[Status.PLANNING.value]
 

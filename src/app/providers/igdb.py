@@ -7,6 +7,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app import helpers
+from app.discovery.prominence import audience
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -177,7 +178,7 @@ def external_game(external_id, source=ExternalGameSource.STEAM):
 
 def search(query, page):
     """Search for games on IGDB using MultiQuery."""
-    cache_key = f"search_{Sources.IGDB.value}_{MediaTypes.GAME.value}_{query}_{page}"
+    cache_key = f"search_v2_{Sources.IGDB.value}_{MediaTypes.GAME.value}_{query}_{page}"
     data = cache.get(cache_key)
 
     if data is None:
@@ -201,7 +202,7 @@ def search(query, page):
         # Create the multiquery with both search and count
         multiquery = (
             'query games "SearchResults" {'
-            "fields name,cover.image_id;"
+            "fields name,cover.image_id,total_rating_count,hypes;"
             "sort total_rating_count desc;"
             f"limit {settings.PER_PAGE};"
             f"offset {offset};"
@@ -249,6 +250,10 @@ def search(query, page):
                 "source": Sources.IGDB.value,
                 "media_type": MediaTypes.GAME.value,
                 "title": media["name"],
+                "prominence": audience(
+                    (media.get("total_rating_count"), 2000, 1),
+                    (media.get("hypes"), 500, 0.75),
+                ),
                 "image": get_image_url(media),
             }
             for media in search_results

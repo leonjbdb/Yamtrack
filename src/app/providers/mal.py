@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from app import helpers
+from app.discovery.prominence import audience
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -42,14 +43,14 @@ def handle_error(error):
 
 def search(media_type, query, page):
     """Search for media on MyAnimeList."""
-    cache_key = f"search_{Sources.MAL.value}_{media_type}_{query}_{page}"
+    cache_key = f"search_v2_{Sources.MAL.value}_{media_type}_{query}_{page}"
     data = cache.get(cache_key)
 
     if data is None:
         url = f"{base_url}/{media_type}"
         params = {
             "q": query,
-            "fields": "media_type",
+            "fields": "media_type,num_list_users,num_scoring_users",
             "limit": settings.PER_PAGE,
             "offset": (page - 1) * settings.PER_PAGE,
         }
@@ -74,6 +75,10 @@ def search(media_type, query, page):
                 "source": Sources.MAL.value,
                 "media_type": media_type,
                 "title": media["node"]["title"],
+                "prominence": audience(
+                    (media["node"].get("num_list_users"), 1000000, 1),
+                    (media["node"].get("num_scoring_users"), 500000, 1),
+                ),
                 "image": get_image_url(media["node"]),
             }
             for media in response

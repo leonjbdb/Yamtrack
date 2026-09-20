@@ -11,11 +11,11 @@ from django.http import HttpResponseBadRequest
 from django.urls import reverse
 
 from app import config
+from app.discovery import providers
+from app.discovery.catalogue import close_matches, link_with_query, normalize, remember
+from app.discovery.ranking import matched_tokens, merge_ranked, score
 from app.models import MediaTypes
 from app.providers import services
-from app.discovery import providers
-from app.discovery.catalogue import remember, close_matches, link_with_query, normalize
-from app.discovery.ranking import matched_tokens, merge_ranked, score
 
 CATEGORIES = [
     ("all", "All Search"),
@@ -60,6 +60,7 @@ def media_rows(rows):
             "aliases": r.get("aliases", []),
             "work_id": r.get("work_id"),
             "edition_ids": r.get("edition_ids", []),
+            **({"prominence": r["prominence"]} if "prominence" in r else {}),
         }
         for r in rows
     ]
@@ -159,7 +160,7 @@ def all_results(user, query):
         settings.TMDB_NSFW,
         settings.IGDB_NSFW,
     ]
-    key = "search:ranked:v4:" + hashlib.sha256(repr(identity).encode()).hexdigest()
+    key = "search:ranked:v5:" + hashlib.sha256(repr(identity).encode()).hexdigest()
     result = cache.get(key)
     if result is not None:
         return copy.deepcopy(result)

@@ -17,6 +17,7 @@ class OwnedGame:
     title: str
     minutes: int | None = None
     recent_minutes: int = 0
+    owned: bool = True
 
 
 @sensitive_variables()
@@ -145,3 +146,38 @@ def itch_library(api_key):
     raise ConnectionFailure(
         "The library exceeds the supported pagination limit. No games were changed."
     )
+
+
+@sensitive_variables()
+def steam_wishlist(api_key, steam_id):
+    """Read the verified owner's wishlist without public caches or cookie scraping."""
+    if not re.fullmatch(r"[0-9A-Fa-f]{32}", api_key) or not re.fullmatch(
+        r"7656119\d{10}", steam_id
+    ):
+        raise ConnectionFailure("Reconnect your verified Steam account.")
+    data = api_get(
+        "https://api.steampowered.com/IWishlistService/GetWishlist/v1/",
+        {"x-webapi-key": api_key},
+        {"steamid": steam_id},
+    )
+    payload = data.get("response")
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        raise ConnectionFailure(
+            "Steam did not provide wishlist access. Existing wishlist entries were kept."
+        )
+    if len(items) > 5000:
+        raise ConnectionFailure(
+            "The wishlist exceeds the supported limit. Existing entries were kept."
+        )
+    games = []
+    seen = set()
+    for item in items:
+        appid = item.get("appid") if isinstance(item, dict) else None
+        if type(appid) is not int or appid <= 0 or appid in seen:
+            raise ConnectionFailure(
+                "Steam returned an invalid wishlist. Existing entries were kept."
+            )
+        seen.add(appid)
+        games.append(OwnedGame(str(appid), f"Steam App {appid}", owned=False))
+    return games

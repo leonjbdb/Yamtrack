@@ -9,6 +9,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from app import helpers
+from app.discovery.prominence import audience
 from app.models import Sources
 from app.providers import services
 
@@ -26,7 +27,7 @@ def handle_error(error):
     )
 
 
-SEARCH_FIELDS = "key,title,author_name,edition_key,editions,editions.key,editions.title,editions.cover_i,editions.language"
+SEARCH_FIELDS = "key,title,author_name,edition_key,editions,editions.key,editions.title,editions.cover_i,editions.language,readinglog_count,ratings_count,edition_count"
 
 
 def search_data(query, page=1, limit=None):
@@ -65,6 +66,11 @@ def search_items(data):
                 "image": get_image_url(edition),
                 "work_id": extract_openlibrary_id(doc.get("key", "")),
                 "edition_ids": doc.get("edition_key") or [media_id],
+                "prominence": audience(
+                    (doc.get("readinglog_count"), 10000, 1),
+                    (doc.get("ratings_count"), 1000, 1),
+                    (doc.get("edition_count"), 300, 0.35),
+                ),
                 "aliases": [doc["title"]]
                 if doc.get("title") != edition["title"]
                 else [],
