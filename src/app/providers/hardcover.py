@@ -119,7 +119,7 @@ def book(media_id):
     cache_key = f"{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_{media_id}"
     data = cache.get(cache_key)
 
-    if data is None:
+    if data is None or "book_links" not in data:
         book_query = """
         query GetBookDetails($book_id: Int!) {
           books_by_pk(id: $book_id) {
@@ -133,13 +133,15 @@ def book(media_id):
             pages
             release_date
             slug
-            cached_contributors(path: "[0]['author']['name']")
+            cached_contributors
+            book_series { position details series { id name } }
             default_cover_edition {
               edition_format
               isbn_13
               isbn_10
               release_date
               publisher {
+                id
                 name
               }
             }
@@ -190,12 +192,19 @@ def book(media_id):
                 "number_of_pages": book_data.get("pages"),
                 "publish_date": edition_details.get("release_date")
                 or book_data.get("release_date"),
-                "author": book_data.get("cached_contributors"),
+                "author": [
+                    c["author"]["name"]
+                    for c in book_data.get("cached_contributors", [])
+                    if c.get("author")
+                ],
                 "publisher": edition_details.get("publisher"),
                 "isbn": edition_details.get("isbn"),
             },
         }
 
+        from app.discovery.books import book_links
+
+        data["book_links"] = book_links(book_data)
         cache.set(cache_key, data)
 
     return data

@@ -230,7 +230,7 @@ class StatisticsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Every kind of obsession.")
+        self.assertContains(response, "Collections")
         self.assertContains(response, "episodes watched")
         self.assertNotContains(response, "Media Timeline")
 
@@ -271,7 +271,7 @@ class StatisticsViewTests(TestCase):
         # 1 of 4 items is scored -> 25%.
         self.assertEqual(response.context["stats"]["rated"], 1)
         self.assertContains(response, "in progress")
-        self.assertContains(response, "Your critical eye")
+        self.assertContains(response, "Ratings")
 
     def test_statistics_view_invalid_date_format(self):
         response = self.client.get(reverse("statistics"), {"months": "forever"})

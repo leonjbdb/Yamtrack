@@ -498,7 +498,7 @@ def media_section_count(
     watch_provider_region=None,
 ):
     """Return the number of content sections on the media details page."""
-    count = 0
+    count = int(bool(media.get("book_links")))
     credits = media.get("discovery") or {}
     if credits.get("cast") or credits.get("crew") or media.get("cast"):
         count += 1

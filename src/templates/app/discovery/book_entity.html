@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% load static app_tags %}
+{% block title %}{{ entity.name }} - Yamtrack{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/discovery.css' %}{% get_static_file_mtime 'css/discovery.css' %}">{% endblock %}
+{% block content %}
+<a class="text-sm text-indigo-400" href="{% url 'search' %}?media_type=book">← Search</a>
+<header class="mb-6 mt-4"><h1 class="text-2xl font-bold">{{ entity.name }}</h1>{% if entity.description %}<details class="credit-biography"><summary>About {{ entity.name }}</summary><p>{{ entity.description|linebreaksbr }}</p></details>{% endif %}</header>
+<nav class="credit-chips" aria-label="Book filters">{% for chip in filters %}<a href="{{ chip.url }}" {% if chip.active %}aria-current="page"{% endif %}>{{ chip.label }}</a>{% endfor %}</nav>
+<nav class="credit-chips" aria-label="Result layout">{% for chip in layout_filters %}<a href="{{ chip.url }}" {% if chip.active %}aria-current="page"{% endif %}>{{ chip.label }}</a>{% endfor %}</nav>
+{% if entity.results %}{% include 'app/discovery/results.html' with results=entity.results %}{% else %}<p class="text-gray-400">No books found.</p>{% endif %}
+<div class="discovery">{% include 'app/discovery/pagination.html' %}</div>
+{% endblock %}

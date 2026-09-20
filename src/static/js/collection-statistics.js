@@ -20,6 +20,7 @@
     new Chart(canvas,{type,data:chartData,options:{...base,...overrides}});
   }
   const bars=(labels,values,color=purple,label='Titles')=>({labels,datasets:[{label,data:values,backgroundColor:color,borderRadius:4,maxBarThickness:24}]});
+  if(data.watchtime) draw('watchtimeByTitle','bar',bars(data.watchtime.labels,data.watchtime.values.map(n=>n/60),'#75bcb8','Watch time'),{indexAxis:'y',plugins:{...base.plugins,legend:{display:false},tooltip:{...base.plugins.tooltip,callbacks:{label:ctx=>{const minutes=Math.round(ctx.parsed.x*60);return `${Math.floor(minutes/60)}h ${String(minutes%60).padStart(2,'0')}m`;}}}},scales:{x:{beginAtZero:true,grid:{color:grid},title:{display:true,text:'Hours'}},y:{grid:{display:false}}}});
   draw('collectionMix','doughnut',{labels:data.mix.labels,datasets:[{data:data.mix.values,backgroundColor:data.mix.colors,borderWidth:0,hoverOffset:6}]},{scales:{},cutout:'76%'});
   draw('collectionStatus','bar',data.status,{indexAxis:'y',scales:{x:{stacked:true,grid:{color:grid},ticks:{precision:0}},y:{stacked:true,grid:{display:false}}}});
   draw('collectionTime','bar',bars(data.time.labels,data.time.values,data.time.colors,'Hours'),{indexAxis:'y',plugins:{...base.plugins,legend:{display:false}},scales:{x:{beginAtZero:true,grid:{color:grid},title:{display:true,text:'Hours'}},y:{grid:{display:false}}}});

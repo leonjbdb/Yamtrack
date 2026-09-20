@@ -17,11 +17,13 @@ user's selected collection, with spreadsheet formula prefixes escaped.
 - TV: each recorded episode watch contributes its known episode runtime. Rewatches
   and specials count; unknown runtimes do not. Season cards expose the same data,
   and are excluded from combined totals to avoid double counting.
-- Anime: watched episodes multiplied by the catalogue's average episode duration.
+- Anime: only individually documented episode runtimes count. The catalogue's
+  average episode duration is excluded; missing durations remain unknown.
 - Books, manga, comics and board games: pages, chapters, issues and plays. These
   have no recorded session duration, so the dashboard does not invent hours.
 
-Viewing hours are runtime-based estimates, not stopwatch measurements. Coverage
+Viewing hours sum the individual runtimes of watched content. Playback speed,
+skipped scenes and partial watches are not recorded. Coverage
 shows which watched units have known runtimes. Catalogue facts are public data
 persisted in CollectionFacts; external requests run in Celery, not in page
 rendering. A refresh is checked when opening statistics and can be requested
@@ -38,8 +40,12 @@ and supported platforms; reading/anime views add progress-percentage bands for
 titles with a known length. Reading and board-game views lead with their native
 units and rank their greatest progress rather than presenting empty hour totals.
 Individual game views show Played counts and median time per catalogue game
-(including unplayed titles); viewing collections show watch counts and runtime
-coverage. Single-type views omit the uninformative one-category composition pie.
+(including unplayed titles); viewing collections lead with watch time, with watch counts and runtime
+coverage shown separately. A searchable, sortable table includes every watched
+movie and episode, its runtime per watch, number of watches and total minutes.
+Unknown runtimes remain visible and can be filtered. Pagination does not limit
+the full watch-time CSV export. A bar chart shows the top 15 individual titles
+or episodes by viewing time. Single-type views omit the uninformative one-category composition pie.
 
 Collection additions measure when entries entered Yamtrack, including imports.
 Monthly consumption uses dated movie/episode watches and positive changes after

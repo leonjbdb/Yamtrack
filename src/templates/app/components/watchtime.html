@@ -1,0 +1,34 @@
+{% load app_tags %}
+<section class="obs-panel obs-ledger obs-watchtime" aria-label="Watch time by movie and episode">
+  <div class="obs-section-title">
+    <div><h2>Watch time by movie and episode</h2><p class="obs-muted">Each recorded watch uses that movie or episode's runtime. Rewatches count again.</p></div>
+    <a class="obs-button" href="{% querystring export='watchtime' %}">Export watch time</a>
+  </div>
+  <p class="obs-muted">{{ stats.watchtime.known }} of {{ stats.watchtime.watched }} watches have a known runtime.{% if stats.watchtime.missing %} <a href="{% querystring watch_missing='1' watch_page=1 %}">{{ stats.watchtime.missing }} watches are missing runtimes</a> and are excluded from the total.{% endif %}</p>
+  <form method="get" class="obs-watch-filter">
+    <input type="hidden" name="type" value="{{ stats.kind }}"><input type="hidden" name="months" value="{{ stats.period }}">
+    <input type="hidden" name="watch_sort" value="{{ stats.watchtime.sort }}">
+    {% if request.GET.watch_missing %}<input type="hidden" name="watch_missing" value="1">{% endif %}
+    <input type="search" name="watch_q" value="{{ stats.watchtime.query }}" aria-label="Search watched movies and episodes" placeholder="Search movies and episodes...">
+    <button class="obs-button">Search</button>
+    {% if stats.watchtime.query or request.GET.watch_missing %}<a class="obs-button" href="{% querystring watch_q=None watch_missing=None watch_page=1 %}">Reset</a>{% endif %}
+  </form>
+  <div class="obs-table-wrap"><table>
+    <thead><tr>
+      <th><a href="{% querystring watch_sort='title' watch_page=1 %}">Title</a></th><th>Episode</th>
+      <th><a href="{% querystring watch_sort='runtime' watch_page=1 %}">Runtime per watch</a></th>
+      <th><a href="{% querystring watch_sort='watches' watch_page=1 %}">Watches</a></th>
+      <th><a href="{% querystring watch_sort='time' watch_page=1 %}">Watch time</a></th>
+    </tr></thead>
+    <tbody>{% for row in stats.watchtime.page %}<tr>
+      <th><a href="{{ row.url }}">{{ row.title }}</a></th>
+      <td>{{ row.episode|default:'—' }}{% if row.episode_name %}<small>{{ row.episode_name }}</small>{% endif %}</td>
+      <td>{{ row.runtime }}</td><td>{{ row.watches }}</td><td>{{ row.time }}</td>
+    </tr>{% empty %}<tr><td colspan="5">No recorded watches match these filters.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <nav class="obs-watch-pages" aria-label="Watch time pages">
+    {% if stats.watchtime.page.has_previous %}<a class="obs-button" href="{% querystring watch_page=stats.watchtime.page.previous_page_number %}">Previous</a>{% endif %}
+    <span class="obs-muted">Page {{ stats.watchtime.page.number }} of {{ stats.watchtime.page.paginator.num_pages }} · {{ stats.watchtime.page.paginator.count }} movies and episodes</span>
+    {% if stats.watchtime.page.has_next %}<a class="obs-button" href="{% querystring watch_page=stats.watchtime.page.next_page_number %}">Next</a>{% endif %}
+  </nav>
+</section>

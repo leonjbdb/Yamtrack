@@ -299,6 +299,10 @@ def media_details(request, source, media_type, media_id, title):  # noqa: ARG001
         )
     elif source == "igdb" and media_type == "game":
         media_metadata["discovery"] = discovery_providers.game_companies(media_id)
+    if source == "hardcover" and media_type == "book":
+        from app.discovery.books import enrich_detail
+
+        enrich_detail(request, media_metadata)
     user_medias = BasicMedia.objects.filter_media_prefetch(
         request.user,
         media_id,
@@ -958,16 +962,62 @@ def statistics(request):
     if period not in ("3", "12", "36"):
         return HttpResponseBadRequest("Unknown activity period")
     data = dashboard(request.user, kind, int(period))
-    if request.GET.get("export") == "csv":
+    watch_rows = data["watchtime"]["rows"]
+    watch_query = request.GET.get("watch_q", "").strip()[:200]
+    if watch_query:
+        watch_rows = [
+            r
+            for r in watch_rows
+            if watch_query.casefold()
+            in " ".join([r["title"], r["episode"], r["episode_name"]]).casefold()
+        ]
+    if request.GET.get("watch_missing") == "1":
+        watch_rows = [r for r in watch_rows if r["runtime_minutes"] is None]
+    watch_sort = request.GET.get("watch_sort", "time")
+    sort_keys = {
+        "time": lambda r: (
+            -(r["minutes"] or 0),
+            r["title"].casefold(),
+            r["season_number"] or 0,
+            r["episode_number"] or 0,
+        ),
+        "runtime": lambda r: (-(r["runtime_minutes"] or 0), r["title"].casefold()),
+        "watches": lambda r: (-r["watches"], r["title"].casefold()),
+        "title": lambda r: (
+            r["title"].casefold(),
+            r["season_number"] or 0,
+            r["episode_number"] or 0,
+        ),
+    }
+    if watch_sort not in sort_keys:
+        return HttpResponseBadRequest("Unknown watch-time sort")
+    watch_rows = sorted(watch_rows, key=sort_keys[watch_sort])
+    if request.GET.get("export") in ("csv", "watchtime"):
         import csv
 
+        watch_export = request.GET.get("export") == "watchtime"
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = (
-            'attachment; filename="collection-statistics.csv"'
+            'attachment; filename="watch-time.csv"'
+            if watch_export
+            else 'attachment; filename="collection-statistics.csv"'
         )
         writer = csv.writer(response)
         writer.writerow(
             [
+                "Type",
+                "Title",
+                "Season",
+                "Episode",
+                "Episode title",
+                "Runtime minutes",
+                "Watches",
+                "Watch time minutes",
+                "Source",
+                "Catalogue ID",
+            ]
+            if watch_export
+            else [
                 "Type",
                 "Title",
                 "Status",
@@ -985,25 +1035,48 @@ def statistics(request):
                 "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) else text
             )
 
-        for row in data["records"]:
+        for row in watch_rows if watch_export else data["records"]:
             writer.writerow(
                 [
                     safe(x)
-                    for x in [
-                        row["label"],
-                        row["item__title"],
-                        row["status"],
-                        row["units"],
-                        row["minutes"],
-                        row["score"],
-                        bool(row["notes"]),
-                        row["facts"].get("year"),
-                    ]
+                    for x in (
+                        [
+                            row["kind"],
+                            row["title"],
+                            row["season_number"],
+                            row["episode_number"],
+                            row["episode_name"],
+                            row["runtime_minutes"],
+                            row["watches"],
+                            row["minutes"],
+                            row["source"],
+                            row["media_id"],
+                        ]
+                        if watch_export
+                        else [
+                            row["label"],
+                            row["item__title"],
+                            row["status"],
+                            row["units"],
+                            row["minutes"],
+                            row["score"],
+                            bool(row["notes"]),
+                            row["facts"].get("year"),
+                        ]
+                    )
                 ]
             )
         response["Cache-Control"] = "private, no-store"
         return response
     data.pop("records")
+    from django.core.paginator import Paginator
+
+    data["watchtime"]["page"] = Paginator(watch_rows, 50).get_page(
+        request.GET.get("watch_page", 1)
+    )
+    data["watchtime"]["query"] = watch_query
+    data["watchtime"]["sort"] = watch_sort
+    data["watchtime"].pop("rows")
     from app.tasks import refresh_collection_facts
 
     if cache.add(f"collection-facts-check:{request.user.pk}", True, timeout=3600):

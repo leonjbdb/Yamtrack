@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from app import config
 from app.models import CollectionFacts, Episode
+from app.watchtime import duration, hour_text, episode_runtime, anime_minutes, breakdown
 
 TYPES = [
     "game",
@@ -55,20 +56,6 @@ FINISHED = {"Completed", "Played"}
 PLANNED = {"Planning", "Planned"}
 
 
-def duration(value):
-    """Parse explicit catalogue durations, never infer a generic episode length."""
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value) if value > 0 else None
-    if not isinstance(value, str):
-        return None
-    match = re.fullmatch(
-        r"\s*(?:(\d+(?:\.\d+)?)h\s*)?(?:(\d+(?:\.\d+)?)\s*(?:min|m))?\s*", value
-    )
-    if match and any(match.groups()):
-        return float(match[1] or 0) * 60 + float(match[2] or 0)
-    return None
-
-
 def public_facts(data):
     details = data.get("details", {})
     year = None
@@ -87,14 +74,21 @@ def public_facts(data):
         ][:40]
 
     return {
-        "runtime": duration(details.get("runtime")),
+        "runtime": duration(data.get("runtime_minutes", details.get("runtime"))),
         "playtime": duration(details.get("playtime")),
         "maximum": data.get("max_progress"),
         "year": year,
         "genres": names(data.get("genres")),
         "platforms": names(details.get("platforms")),
+        "episode_names": {
+            str(e["episode_number"]): e.get("name", e.get("title", ""))
+            for e in data.get("episodes", [])
+            if "episode_number" in e
+        },
         "episodes": {
-            str(e["episode_number"]): e.get("runtime")
+            str(e["episode_number"]): duration(
+                e.get("runtime_minutes", e.get("runtime"))
+            )
             for e in data.get("episodes", [])
             if "episode_number" in e
         },
@@ -131,11 +125,6 @@ def tracked_item_ids(user):
     return {r["item_id"] for rows in owner_rows(user).values() for r in rows}
 
 
-def hour_text(minutes):
-    hours, mins = divmod(round(minutes), 60)
-    return f"{hours:,}h {mins:02d}m"
-
-
 def month_labels(today, months):
     total = today.year * 12 + today.month - 1
     return [
@@ -159,15 +148,16 @@ def dashboard(user, kind="all", months=12):
     episode_minutes = Counter()
     episode_known = Counter()
     seasons = {r["id"]: r for r in rows["season"]}
-    for ep in Episode.objects.filter(related_season__user=user).values(
-        "related_season_id", "item__episode_number", "end_date"
-    ):
+    episodes = list(
+        Episode.objects.filter(related_season__user=user).values(
+            "related_season_id", "item__episode_number", "end_date"
+        )
+    )
+    for ep in episodes:
         sid = ep["related_season_id"]
         season = seasons[sid]
-        minutes = (
-            facts.get(season["item_id"], {})
-            .get("episodes", {})
-            .get(str(ep["item__episode_number"]))
+        minutes = episode_runtime(
+            facts.get(season["item_id"], {}), ep["item__episode_number"]
         )
         episode_counts[sid] += 1
         if minutes is not None and minutes > 0:
@@ -208,7 +198,7 @@ def dashboard(user, kind="all", months=12):
         note_count = sum(bool(r["notes"].strip()) for r in collection)
         for row in collection:
             f = facts.get(row["item_id"], {})
-            runtime = f.get("runtime")
+            runtime = duration(f.get("runtime"))
             progress = row.get("progress", 0)
             amount = progress
             time = 0
@@ -229,9 +219,11 @@ def dashboard(user, kind="all", months=12):
                 possible += amount
                 known += coverage[row["id"]]
             elif k == "anime":
-                time = amount * (runtime or 0)
+                time = anime_minutes(f, 0, amount)
                 possible += amount
-                known += amount if runtime else 0
+                known += sum(
+                    episode_runtime(f, n) is not None for n in range(1, amount + 1)
+                )
             units += amount
             minutes += time
             month = timezone.localtime(row["created_at"]).strftime("%Y-%m")
@@ -321,8 +313,9 @@ def dashboard(user, kind="all", months=12):
             minutes = (
                 delta
                 if k == "game"
-                else delta
-                * (facts.get(row_map[h["id"]]["item_id"], {}).get("runtime") or 0)
+                else anime_minutes(
+                    facts.get(row_map[h["id"]]["item_id"], {}), old, h["progress"]
+                )
                 if k == "anime"
                 else 0
             )
@@ -527,7 +520,18 @@ def dashboard(user, kind="all", months=12):
             )
             chart["depth"][bucket] += 1
     scores = [float(r["score"]) for r in records if r["score"] is not None]
+    watchtime = breakdown(rows, facts, episodes, kind)
+    chart["watchtime"] = {
+        "labels": [
+            r["title"] + (" · " + r["episode"] if r["episode"] else "")
+            for r in watchtime["rows"]
+            if r["minutes"]
+        ][:15],
+        "values": [r["minutes"] for r in watchtime["rows"] if r["minutes"]][:15],
+    }
     return {
+        "watchtime": watchtime,
+        "viewing_type": kind in ("movie", "tv", "season", "anime"),
         "kind": kind,
         "native": native,
         "native_value": sum(s["units"] for s in selected),

@@ -8,6 +8,7 @@
       Overview
     </button>
 
+    {% if media.book_links %}<button @click="tab = 'books'" class="pb-3 text-sm font-medium whitespace-nowrap border-b-2 cursor-pointer" :class="tab === 'books' ? 'text-white border-indigo-500' : 'text-gray-400 border-transparent'">Books</button>{% endif %}
     {% if media.discovery.cast or media.discovery.crew %}
       <button @click="tab = 'credits'" class="pb-3 text-sm font-medium whitespace-nowrap border-b-2 cursor-pointer" :class="tab === 'credits' ? 'text-white border-indigo-500' : 'text-gray-400 border-transparent'">Cast & crew</button>
     {% elif media.cast %}

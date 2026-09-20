@@ -1,0 +1,16 @@
+{% if media.book_links %}
+<div x-show="tab === 'overview' || tab === 'books'">
+  {% if media.book_links.contributors %}
+  <section class="mb-8"><h2 class="text-xl font-bold mb-4">Contributors</h2>
+    <div class="credit-chips">{% for person in media.book_links.contributors %}<a href="{{ person.url }}">{{ person.name }} <span class="text-gray-400">· {{ person.role }}</span></a>{% endfor %}</div>
+  </section>{% endif %}
+  {% if media.book_links.publisher %}<p class="mb-6 text-sm">Publisher: <a class="text-indigo-400 hover:underline" href="{{ media.book_links.publisher.url }}">{{ media.book_links.publisher.name }}</a></p>{% endif %}
+  {% for series in media.book_series %}
+    <section class="mb-8" aria-label="{{ series.name }} series">
+      <h2 class="text-xl font-bold mb-2"><a class="hover:text-indigo-400" href="{{ series.url }}">{{ series.name }}</a>{% if series.position %} <span class="text-gray-400 text-base">· Book {{ series.position }}</span>{% endif %}</h2>
+      <p class="text-sm text-gray-400 mb-4">{{ series.total }} books · <a class="text-indigo-400 hover:underline" href="{{ series.url }}">View series</a></p>
+      {% include 'app/discovery/results.html' with results=series.results layout='grid' card_namespace=series.id %}
+    </section>
+  {% endfor %}
+</div>
+{% endif %}

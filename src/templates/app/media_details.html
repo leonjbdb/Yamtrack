@@ -420,6 +420,7 @@
         {# Section filter links (mobile: directly above the tab content) #}
         {% include "app/components/media_section_tabs.html" with extra_classes="md:hidden mb-6" %}
 
+        {% include "app/discovery/book_details.html" %}
         {% include "app/discovery/credits.html" %}
         {% if media.cast and not media.discovery %}
           <section class="mb-8" x-show="tab === 'overview' || tab === 'cast'">

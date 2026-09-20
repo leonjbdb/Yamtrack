@@ -102,8 +102,8 @@ class CollectionStatisticsTests(CollectionFixtures, TestCase):
         rows = {r["kind"]: r for r in data["summaries"]}
         self.assertEqual(data["playing"], "2h 30m")
         self.assertEqual(
-            data["viewing"], "5h 40m"
-        )  # 200 + 60 + 80, no season duplication
+            data["viewing"], "4h 40m"
+        )  # 200 + 80; anime average excluded, seasons not counted twice
         self.assertEqual(rows["movie"]["units"], 3)
         self.assertEqual(rows["movie"]["known"], 2)
         self.assertEqual(rows["tv"]["units"], 3)
@@ -179,7 +179,7 @@ class CollectionStatisticsTests(CollectionFixtures, TestCase):
         Item.objects.filter(pk=obj.item_id).update(title="=FORMULA()")
         response = self.client.get(reverse("statistics"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Time well spent.")
+        self.assertContains(response, "Statistics")
         self.assertContains(response, "1h 00m")
         self.assertContains(response, "collection-chart-data")
         self.assertEqual(response["Cache-Control"], "private, no-store")
@@ -261,3 +261,112 @@ class CollectionFactsTaskTests(CollectionFixtures, TestCase):
         refresh_collection_facts(self.user.pk)
         self.assertEqual(fetch.call_count, 3)
         self.assertEqual(CollectionFacts.objects.count(), 1)
+
+
+class WatchTimeTests(CollectionFixtures, TestCase):
+    def episodes(self, owner=None):
+        tv = self.record("tv", user=owner)
+        season = self.record(
+            "season",
+            user=owner,
+            related_tv=tv,
+            facts={
+                "runtime": 99,
+                "episodes": {"1": 22, "2": 47, "3": 65, "4": None},
+                "episode_names": {"1": "Pilot"},
+            },
+        )
+        for number in (1, 2, 3, 1, 4):
+            item, _ = Item.objects.get_or_create(
+                media_id=season.item.media_id,
+                source="manual",
+                media_type="episode",
+                season_number=1,
+                episode_number=number,
+                defaults={"title": "Episode", "image": ""},
+            )
+            Episode.objects.bulk_create(
+                [Episode(item=item, related_season=season, end_date=timezone.now())]
+            )
+
+    def test_individual_runtimes_reconcile_with_totals_and_rewatches(self):
+        movie = self.record("movie", facts={"runtime": 91})
+        type(movie).objects.bulk_create(
+            [type(movie)(item=movie.item, user=self.user, status="Completed")]
+        )
+        self.record("movie", facts={"runtime": 143})
+        self.record("movie", facts={"runtime": 500}, user=self.other)
+        self.episodes()
+        self.episodes(self.other)
+        self.record("anime", progress=3, facts={"runtime": 24})
+        data = dashboard(self.user)
+        self.assertEqual(data["watchtime"]["minutes"], 481)  # 91*2+143+22*2+47+65
+        self.assertEqual(data["viewing"], "8h 01m")
+        self.assertEqual(data["watchtime"]["missing"], 4)
+        pilot = next(r for r in data["watchtime"]["rows"] if r["episode"] == "S01E01")
+        self.assertEqual(
+            (pilot["runtime_minutes"], pilot["watches"], pilot["minutes"]), (22, 2, 44)
+        )
+        self.assertEqual(pilot["episode_name"], "Pilot")
+        for kind in ("tv", "season"):
+            self.assertEqual(dashboard(self.user, kind)["watchtime"]["minutes"], 156)
+
+    def test_provider_runtime_formats_and_invalid_values(self):
+        facts = public_facts(
+            {
+                "episodes": [
+                    {"episode_number": 1, "runtime": 47, "name": "Pilot"},
+                    {
+                        "episode_number": 2,
+                        "runtime": "1h 05min",
+                        "runtime_minutes": 65,
+                        "title": "Finale",
+                    },
+                    {"episode_number": 3, "runtime": 0},
+                ]
+            }
+        )
+        self.assertEqual(facts["episodes"], {"1": 47, "2": 65, "3": None})
+        for value in (0, -5, True, float("nan"), float("inf"), "0 min"):
+            self.assertIsNone(duration(value))
+        self.record(
+            "anime", progress=3, facts={"runtime": 24, "episodes": {"1": 26, "2": 48}}
+        )
+        self.assertEqual(dashboard(self.user, "anime")["watchtime"]["minutes"], 74)
+
+    @patch("app.tasks.refresh_collection_facts.delay")
+    def test_complete_paginated_table_and_csv_are_private(self, enqueue):
+        import csv, io
+
+        for _ in range(53):
+            self.record("movie", facts={"runtime": 91})
+        self.record("movie", facts={})
+        self.record("movie", facts={"runtime": 999}, user=self.other)
+        response = self.client.get(
+            reverse("statistics"), {"type": "movie", "watch_page": 2}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["stats"]["watchtime"]["page"]), 4)
+        self.assertContains(response, "Unknown")
+        export = self.client.get(reverse("statistics"), {"export": "watchtime"})
+        rows = list(csv.DictReader(io.StringIO(export.content.decode())))
+        self.assertEqual(len(rows), 54)
+        self.assertEqual(
+            sum(float(r["Watch time minutes"] or 0) for r in rows), 53 * 91
+        )
+        self.assertEqual(export["Cache-Control"], "private, no-store")
+        missing = self.client.get(
+            reverse("statistics"), {"export": "watchtime", "watch_missing": 1}
+        )
+        self.assertEqual(
+            len(list(csv.DictReader(io.StringIO(missing.content.decode())))), 1
+        )
+        filtered = self.client.get(
+            reverse("statistics"), {"export": "watchtime", "watch_q": "Title 1"}
+        )
+        self.assertTrue(
+            all(
+                "Title 1" in r["Title"]
+                for r in csv.DictReader(io.StringIO(filtered.content.decode()))
+            )
+        )
