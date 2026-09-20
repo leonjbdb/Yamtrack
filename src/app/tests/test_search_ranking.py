@@ -45,6 +45,14 @@ class SearchRankingTests(TestCase):
         self.assertEqual(len(ranked), 4)
         self.assertGreater(name_score("Alien", "Alien"), name_score("Alien", "Aliens"))
 
+    def test_index_alias_is_retained_when_provider_returns_same_identity(self):
+        indexed = {**row("Original title", 1), "aliases": ["Alien"]}
+        ranked = merge_ranked(
+            "Alien", [row("Alien invasion", 2), row("Original title", 1)], [indexed]
+        )
+        self.assertEqual(ranked[0]["external_id"], "1")
+        self.assertEqual(len(ranked), 2)
+
     def test_short_typo_and_transposition_find_unseen_direct_results(self):
         remember([row("Alien", 1), row("Aliens", 2), row("The Alienist", 3)])
         matches = close_matches("Alen", ["movie"], ["tmdb"])

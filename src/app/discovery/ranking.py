@@ -83,6 +83,12 @@ def merge_ranked(query, direct, indexed):
         identity = (row["source"], row["kind"], str(row["external_id"]))
         if identity not in merged:
             merged[identity] = dict(row, _provider_order=10000)
+        else:
+            merged[identity]["aliases"] = list(
+                dict.fromkeys(
+                    [*merged[identity].get("aliases", []), *row.get("aliases", [])]
+                )
+            )
 
     def order(row):
         relevance = score(query, row)
