@@ -43,7 +43,7 @@
       </button>
     {% endif %}
 
-    {% if media.episodes %}
+    {% if media.episodes or media_type == MediaTypes.TV.value %}
       <button @click="tab = 'episodes'"
               class="pb-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors duration-200 cursor-pointer"
               :class="tab === 'episodes' ? 'text-white border-indigo-500' : 'text-gray-400 border-transparent hover:text-white'">

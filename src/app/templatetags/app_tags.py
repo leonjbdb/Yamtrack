@@ -226,6 +226,9 @@ def get_search_selection(context):
 def get_sidebar_media_types(user):
     """Return available media types for sidebar navigation based on user preferences."""
     enabled_types = user.get_enabled_media_types()
+    if "season" in enabled_types and "tv" not in enabled_types:
+        enabled_types.insert(0, "tv")
+    enabled_types = [kind for kind in enabled_types if kind != "season"]
 
     # Format the types for sidebar
     return [

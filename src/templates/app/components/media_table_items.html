@@ -33,6 +33,9 @@
         <a href="{{ media.item|media_url }}"
            class="hover:text-indigo-400 transition-colors line-clamp-1">{{ media.item }}</a>
 
+        {% if media_type == MediaTypes.TV.value and target_user == request.user %}
+          {% include "app/tv/button.html" with item=media.item %}
+        {% endif %}
         {% if media.repeats > 1 %}
           <div class="flex items-center">
             {% include "app/icons/repeat.svg" with classes="w-4 h-4 text-slate-200 mr-1" %}

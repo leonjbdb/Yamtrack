@@ -112,6 +112,8 @@ def home(request):
 @require_POST
 def progress_edit(request, media_type, instance_id):
     """Increase or decrease the progress of a media item from home page."""
+    if media_type == MediaTypes.TV:
+        return HttpResponseBadRequest("Use the episode controls to update TV progress")
     operation = request.POST["operation"]
     hide_unreleased = request.user.home_hide_unreleased
     home_status = request.POST.get("home_status")
@@ -184,6 +186,9 @@ def media_list(request, username, media_type):
         msg = "User not found"
         raise Http404(msg)
 
+    if media_type == MediaTypes.SEASON:
+        return redirect("medialist", username=username, media_type=MediaTypes.TV)
+
     # if user is looking at own page then update preferences
     if request.user == target_user:
         layout = target_user.update_preference(
@@ -205,6 +210,11 @@ def media_list(request, username, media_type):
             raise Http404(msg)
 
         enabled_media_types = target_user.get_enabled_media_types()
+        if (
+            MediaTypes.SEASON in enabled_media_types
+            and MediaTypes.TV not in enabled_media_types
+        ):
+            enabled_media_types.append(MediaTypes.TV)
         if not enabled_media_types:
             msg = "User doesn't have any media types enabled"
             raise Http404(msg)
@@ -332,6 +342,12 @@ def media_details(request, source, media_type, media_id, title):  # noqa: ARG001
             current_instance.item, media_metadata.get("image")
         )
 
+    selected_season = request.GET.get("season", "")
+    if selected_season and not selected_season.isdecimal():
+        return HttpResponseBadRequest("Invalid season")
+    if media_type == MediaTypes.TV:
+        media_metadata.get("related", {}).pop("seasons", None)
+
     # Enrich related items with user tracking data
     if media_metadata.get("related"):
         for section_name, related_items in media_metadata["related"].items():
@@ -363,71 +379,12 @@ def media_details(request, source, media_type, media_id, title):  # noqa: ARG001
 @require_GET
 def season_details(request, source, media_id, title, season_number):  # noqa: ARG001 For URL
     """Return the details page for a season."""
-    tv_with_seasons_metadata = services.get_media_metadata(
-        "tv_with_seasons",
-        media_id,
-        source,
-        [season_number],
+    return redirect(
+        reverse("media_details", args=[source, "tv", media_id, title])
+        + "?"
+        + urlencode({"season": season_number})
+        + "#episodes"
     )
-    season_metadata = copy.deepcopy(tv_with_seasons_metadata[f"season/{season_number}"])
-    if source == "tmdb":
-        from app.discovery import providers as discovery_providers
-
-        season_metadata["discovery"] = discovery_providers.title_credits(
-            "season", media_id, season_number
-        )
-
-    user_medias = BasicMedia.objects.filter_media_prefetch(
-        request.user,
-        media_id,
-        MediaTypes.SEASON.value,
-        source,
-        season_number=season_number,
-    )
-
-    current_instance = user_medias[0] if user_medias else None
-    episodes_in_db = current_instance.episodes.all() if current_instance else []
-
-    if current_instance is not None:
-        helpers.refresh_item_image_if_missing(
-            current_instance.item, season_metadata.get("image")
-        )
-
-    if source == Sources.MANUAL.value:
-        season_metadata["episodes"] = manual.process_episodes(
-            season_metadata,
-            episodes_in_db,
-        )
-    else:
-        season_metadata["episodes"] = tmdb.process_episodes(
-            season_metadata,
-            episodes_in_db,
-        )
-
-    # Enrich related items with user tracking data
-    if season_metadata.get("related"):
-        for section_name, related_items in season_metadata["related"].items():
-            if related_items:
-                season_metadata["related"][section_name] = (
-                    helpers.enrich_items_with_user_data(
-                        request,
-                        related_items,
-                        section_name,
-                    )
-                )
-
-    context = {
-        "media": season_metadata,
-        "tv": tv_with_seasons_metadata,
-        "media_type": MediaTypes.SEASON.value,
-        "user_medias": user_medias,
-        "current_instance": current_instance,
-        "watch_providers": tmdb.filter_providers(
-            season_metadata.get("providers"), request.user.watch_provider_region
-        ),
-        "watch_provider_region": request.user.watch_provider_region,
-    }
-    return render(request, "app/media_details.html", context)
 
 
 @require_POST
@@ -626,7 +583,7 @@ def track_modal(
             response["Cache-Control"] = "private, no-store"
             return response
         title = metadata["title"]
-        if is_unreleased(metadata):
+        if media_type == MediaTypes.TV or is_unreleased(metadata):
             initial_data["status"] = (
                 GameStatus.PLANNED
                 if media_type == MediaTypes.GAME

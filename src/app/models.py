@@ -267,7 +267,9 @@ class MediaManager(models.Manager):
             return queryset.prefetch_related(
                 Prefetch(
                     "seasons",
-                    queryset=Season.objects.select_related("item"),
+                    queryset=Season.objects.select_related("item").prefetch_related(
+                        Prefetch("item__event_set", to_attr="prefetched_events"),
+                    ),
                 ),
                 Prefetch(
                     "seasons__episodes",
@@ -335,7 +337,8 @@ class MediaManager(models.Manager):
             queryset = queryset.annotate(
                 # Count episodes in regular seasons (season_number > 0)
                 calculated_progress=models.Count(
-                    "seasons__episodes",
+                    "seasons__episodes__item",
+                    distinct=True,
                     filter=models.Q(seasons__item__season_number__gt=0),
                 ),
             )
@@ -468,12 +471,11 @@ class MediaManager(models.Manager):
         if specific_media_type:
             return [specific_media_type]
 
-        # Get active types excluding TV
-        return [
-            media_type
-            for media_type in user.get_active_media_types()
-            if media_type != MediaTypes.TV.value
-        ]
+        # TV shows own their seasons; home must not list both independently.
+        active = user.get_active_media_types()
+        if MediaTypes.SEASON in active and MediaTypes.TV not in active:
+            active.append(MediaTypes.TV)
+        return [kind for kind in active if kind != MediaTypes.SEASON]
 
     def _annotate_next_event(self, media_list):
         """Annotate next_event for media items."""
@@ -481,10 +483,17 @@ class MediaManager(models.Manager):
 
         for media in media_list:
             # Get future events sorted by datetime
+            media_events = getattr(media.item, "prefetched_events", [])
+            if isinstance(media, TV):
+                media_events = [
+                    event
+                    for season in media.seasons.all()
+                    for event in getattr(season.item, "prefetched_events", [])
+                ]
             future_events = sorted(
                 [
                     event
-                    for event in getattr(media.item, "prefetched_events", [])
+                    for event in media_events
                     if event.datetime > current_time
                 ],
                 key=lambda e: e.datetime,
@@ -1051,7 +1060,7 @@ class TV(Media):
     def progress(self):
         """Return the total episodes watched for the TV show."""
         return sum(
-            season.progress
+            len({episode.item.episode_number for episode in season.episodes.all()})
             for season in self.seasons.all()
             if season.item.season_number != 0
         )
@@ -1517,12 +1526,14 @@ class Season(Media):
         current_date,
     ):
         """Return the season status after completing all already released episodes."""
-        latest_watched_ep_num = self._get_latest_watched_episode_number()
+        watched_numbers = set(
+            self.episodes.values_list("item__episode_number", flat=True)
+        )
         released_remaining_exists = False
         unreleased_remaining_exists = False
 
         for episode in season_metadata["episodes"]:
-            if episode["episode_number"] <= latest_watched_ep_num:
+            if episode["episode_number"] in watched_numbers:
                 continue
 
             if app.helpers.is_released_date(episode.get("air_date"), current_date):
@@ -1533,7 +1544,7 @@ class Season(Media):
         if not unreleased_remaining_exists:
             return Status.COMPLETED.value
 
-        if latest_watched_ep_num > 0 or released_remaining_exists:
+        if watched_numbers or released_remaining_exists:
             return Status.IN_PROGRESS.value
 
         return unreleased_only_status
@@ -1726,7 +1737,9 @@ class Season(Media):
         current_date,
     ):
         """Return episodes needed to complete a season."""
-        latest_watched_ep_num = self._get_latest_watched_episode_number()
+        watched_numbers = set(
+            self.episodes.values_list("item__episode_number", flat=True)
+        )
         episodes_to_create = []
 
         # Calculate current time once before the loop
@@ -1734,8 +1747,8 @@ class Season(Media):
 
         # Create Episode objects for the remaining episodes
         for episode in reversed(season_metadata["episodes"]):
-            if episode["episode_number"] <= latest_watched_ep_num:
-                break
+            if episode["episode_number"] in watched_numbers:
+                continue
 
             if not app.helpers.is_released_date(
                 episode.get("air_date"),
@@ -1839,12 +1852,15 @@ class Episode(models.Model):
             [season_number],
         )
         season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
-        max_progress = len(season_metadata["episodes"])
+        expected_numbers = {ep["episode_number"] for ep in season_metadata["episodes"]}
+        watched_numbers = set(
+            self.related_season.episodes.values_list("item__episode_number", flat=True)
+        )
 
         # clear prefetch cache to get the updated episodes
         self.related_season.refresh_from_db()
 
-        is_finale = self.item.episode_number == max_progress
+        is_finale = bool(expected_numbers) and expected_numbers <= watched_numbers
         season_just_completed = False
         if is_finale:
             if self.related_season.status != Status.COMPLETED.value:
@@ -1898,7 +1914,9 @@ class Episode(models.Model):
 
         if (
             season.status == Status.COMPLETED.value
-            and season.progress < deleted_episode_number
+            and not season.episodes.filter(
+                item__episode_number=deleted_episode_number
+            ).exists()
         ):
             season.status = Status.IN_PROGRESS.value
             bulk_update_with_history(

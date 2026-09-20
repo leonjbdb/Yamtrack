@@ -68,7 +68,12 @@
          title="{{ media }}">{{ media }}</a>
     </div>
 
-    {% if home_status == Status.PLANNING.value %}
+    {% if media.item.media_type == MediaTypes.TV.value %}
+      <div class="p-3" x-data="{ watched: {{ media.progress }} }" @tv-progress-changed.window="if ($event.detail.key === '{{ media.item.source }}-{{ media.item.media_id }}') watched = $event.detail.watched">
+        <p class="tv-show-progress"><span x-text="watched">{{ media.progress }}</span> episodes watched</p>
+        {% include "app/tv/button.html" with item=media.item %}
+      </div>
+    {% elif home_status == Status.PLANNING.value %}
       {% if user.progress_bar %}<div class="h-1.25 {{ Status.PLANNING.value|status_background_color }}"></div>{% endif %}
     {% else %}
       <div id="progress-{{ media.item.media_type }}-{{ media.id }}">

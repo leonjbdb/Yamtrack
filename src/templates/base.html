@@ -51,7 +51,8 @@
           content="{% static "favicon/browserconfig.xml" %}">
     <meta name="theme-color" content="#181a1b">
 
-  </head>
+    <link rel="stylesheet" href="{% static 'css/tv_tracking.css' %}{% get_static_file_mtime 'css/tv_tracking.css' %}">
+</head>
 
   <body>
     {% block body %}

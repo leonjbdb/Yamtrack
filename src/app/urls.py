@@ -1,6 +1,6 @@
 from django.urls import path, register_converter
 
-from app import converters, views
+from app import converters, views, tv_tracking
 from app.discovery import views as discovery_views
 from app.discovery import books as book_views
 from app.discovery import free_books as free_book_views
@@ -10,6 +10,9 @@ register_converter(converters.SourceChecker, "source")
 
 
 urlpatterns = [
+    path("tv/<source:source>/<str:media_id>/progress", tv_tracking.tracker, name="tv_tracker"),
+    path("tv/<source:source>/<str:media_id>/season/<int:season_number>", tv_tracking.tracker, name="tv_tracker_season"),
+    path("tv/<source:source>/<str:media_id>/season/<int:season_number>/watch", tv_tracking.watch, name="tv_watch"),
     path("", views.home, name="home"),
     path("<str:username>/<media_type:media_type>", views.media_list, name="medialist"),
     path("search", views.media_search, name="search"),

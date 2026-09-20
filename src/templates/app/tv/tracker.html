@@ -1,0 +1,53 @@
+{% load app_tags %}
+<section class="tv-tracker" aria-label="{{ show.title }} Episodes" hx-target="closest .tv-tracker" hx-swap="outerHTML" hx-sync="this:queue all">
+  <div class="tv-tracker-heading">
+    <div><h2>{{ show.title }}</h2><p>{{ watched }} / {{ total }} episodes watched · {{ completed_seasons }} / {{ season_count }} seasons watched</p></div>
+    <span class="tv-loading htmx-indicator" role="status">Loading…</span>
+  </div>
+  {% for season in seasons %}
+    <div class="tv-season {% if season.complete %}tv-season-watched{% endif %}">
+      <button class="tv-season-heading" type="button" hx-get="{% if selected_season == season.season_number %}{% url 'tv_tracker' show.source show.media_id %}{% else %}{% url 'tv_tracker_season' show.source show.media_id season.season_number %}{% endif %}" aria-expanded="{% if selected_season == season.season_number %}true{% else %}false{% endif %}">
+        <span>{% if season.complete %}✓ {% endif %}{{ season.label }}</span>
+        <span>{{ season.watched }}{% if season.total != None %} / {{ season.total }}{% endif %} watched <span aria-hidden="true">{% if selected_season == season.season_number %}▾{% else %}▸{% endif %}</span></span>
+      </button>
+      {% if selected_season == season.season_number %}
+        <div class="tv-season-content">
+          <div class="tv-season-tools">
+            <p>{% if season.season_number == 0 %}Specials are tracked separately from regular episodes.{% else %}Only released episodes are marked watched.{% endif %}</p>
+            <form hx-post="{% url 'tv_watch' show.source show.media_id season.season_number %}" hx-disabled-elt="find button">
+              {% csrf_token %}<input type="hidden" name="action" value="season">
+              <button type="submit" class="tv-action">Mark Season Watched</button>
+            </form>
+          </div>
+          {% for episode in episodes %}
+            <div class="tv-episode {% if episode.watched %}tv-episode-watched{% endif %}">
+              <span class="tv-episode-number">{% if episode.watched %}<span aria-label="Watched">✓</span>{% else %}<span aria-label="Unwatched">○</span>{% endif %} E{{ episode.number|stringformat:"02d" }}</span>
+              <div class="tv-episode-info">
+                {% if user.obfuscate_unseen_episodes and not episode.watched %}
+                  <details><summary>Episode {{ episode.number }}</summary><strong>{{ episode.title }}</strong></details>
+                {% else %}<strong>{{ episode.title }}</strong>{% endif %}
+                <p>{{ episode.air_date|default:"Unknown air date" }}{% if episode.runtime %} · {{ episode.runtime }} min{% endif %}{% if not episode.released %} · Unaired{% endif %}</p>
+                {% if episode.watched %}<p>Watched{% if episode.last_watched %} {{ episode.last_watched|date_format:user }}{% endif %}{% if episode.watches > 1 %} · {{ episode.watches }} watches{% endif %}</p>{% endif %}
+                <details class="tv-watch-history"><summary>History</summary>
+                  {% for watch in episode.history %}<p>Watched {% if watch.end_date %}{{ watch.end_date|datetime_format:user }}{% else %}without a date{% endif %}</p>{% empty %}<p>No watches recorded.</p>{% endfor %}
+                  <form hx-post="{% url 'tv_watch' show.source show.media_id season.season_number %}" hx-disabled-elt="find button">
+                    {% csrf_token %}<input type="hidden" name="action" value="log"><input type="hidden" name="episode_number" value="{{ episode.number }}">
+                    <label>Watch Date <input type="{% if TRACK_TIME %}datetime-local{% else %}date{% endif %}" name="end_date"></label>
+                    <button type="submit" class="tv-action" {% if not episode.released %}disabled{% endif %}>Add Watch</button>
+                  </form>
+                </details>
+              </div>
+              <form hx-post="{% url 'tv_watch' show.source show.media_id season.season_number %}" hx-disabled-elt="find button">
+                {% csrf_token %}<input type="hidden" name="episode_number" value="{{ episode.number }}">
+                <input type="hidden" name="action" value="{% if episode.watched %}undo{% else %}watch{% endif %}">
+                <button type="submit" class="tv-action {% if episode.watched %}tv-action-muted{% endif %}" {% if not episode.released and not episode.watched %}disabled{% endif %}>
+                  {% if episode.watches > 1 %}Undo Last Watch{% elif episode.watched %}Mark Unwatched{% else %}Mark Watched{% endif %}
+                </button>
+              </form>
+            </div>
+          {% empty %}<p class="tv-empty">No episodes available.</p>{% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  {% empty %}<p class="tv-empty">No seasons available.</p>{% endfor %}
+</section>

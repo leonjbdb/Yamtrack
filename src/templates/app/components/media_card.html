@@ -35,7 +35,7 @@
       {% endif %}
     {% endwith %}
 
-    {% if media.progress and media_type != MediaTypes.MOVIE.value %}
+    {% if media.progress and item.media_type != MediaTypes.MOVIE.value and item.media_type != MediaTypes.TV.value %}
       <div class="absolute bottom-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
         <span class="text-sm text-white">
           {{ media.formatted_progress }}
@@ -104,6 +104,13 @@
        class="text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1"
        title="{{ title }}">{{ title }}</a>
   </div>
+
+  {% if item.media_type == MediaTypes.TV.value %}
+    <div class="p-3" x-data="{ watched: {{ media.progress|default:0 }} }" @tv-progress-changed.window="if ($event.detail.key === '{{ item.source }}-{{ item.media_id }}') watched = $event.detail.watched">
+      {% if media %}<p class="tv-show-progress"><span x-text="watched">{{ media.progress }}</span> episodes watched</p>{% endif %}
+      {% if not target_user or target_user == request.user %}{% include "app/tv/button.html" %}{% endif %}
+    </div>
+  {% endif %}
 
   {% if item.media_type == MediaTypes.EPISODE.value %}
     {% include "app/components/fill_track_episode.html" with request=request media=item episode=item episode_title=title csrf_token=csrf_token TRACK_TIME=TRACK_TIME only %}

@@ -1,0 +1,6 @@
+<div class="tv-quick" x-data="{ episodesOpen: false }" @keydown.escape.window="episodesOpen = false">
+  <button type="button" class="tv-open" @click="episodesOpen = true" hx-get="{% url 'tv_tracker' item.source item.media_id %}" hx-target="next .tv-dialog .tv-dialog-content" title="Seasons and Episodes">Episodes</button>
+  <div class="tv-dialog" x-show="episodesOpen" x-cloak role="dialog" aria-modal="true" aria-label="{{ item.title }} Episodes" @click.self="episodesOpen = false">
+    <div class="tv-dialog-inner"><button type="button" class="tv-close" @click="episodesOpen = false" aria-label="Close Episodes">✕</button><div class="tv-dialog-content"><p>Loading…</p></div></div>
+  </div>
+</div>

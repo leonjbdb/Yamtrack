@@ -167,6 +167,7 @@ def preferences(request):
     """Render the preferences settings page."""
     media_types = MediaTypes.values
     media_types.remove(MediaTypes.EPISODE.value)
+    media_types.remove(MediaTypes.SEASON.value)
     watch_provider_regions = tmdb.watch_provider_regions()
 
     if request.method == "GET":
@@ -212,6 +213,7 @@ def preferences(request):
     if week_start_day in WeekStartDayChoices.values:
         request.user.week_start_day = week_start_day
     media_types_checked = request.POST.getlist("media_types_checkboxes")
+    request.user.season_enabled = MediaTypes.TV in media_types_checked
 
     provider_region = request.POST.get("watch_provider_region", "")
     if provider_region in [region[0] for region in watch_provider_regions]:

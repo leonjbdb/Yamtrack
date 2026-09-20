@@ -63,69 +63,9 @@ class MediaDetailsViewTests(TestCase):
             Sources.TMDB.value,
         )
 
-    @patch("app.providers.services.get_media_metadata")
-    @patch("app.providers.tmdb.process_episodes")
-    def test_season_details_view(self, mock_process_episodes, mock_get_metadata):
-        """Test the season details view."""
-        self.user.obfuscate_unseen_episodes = True
-        self.user.save(update_fields=["obfuscate_unseen_episodes"])
-
-        mock_get_metadata.return_value = {
-            "title": "Test TV Show",
-            "media_id": "1668",
-            "source": Sources.TMDB.value,
-            "media_type": MediaTypes.TV.value,
-            "image": "http://example.com/image.jpg",
-            "season/1": {
-                "title": "Season 1",
-                "media_id": "1668",
-                "media_type": MediaTypes.SEASON.value,
-                "source": Sources.TMDB.value,
-                "image": "http://example.com/season.jpg",
-                "episodes": [],
-            },
-        }
-
-        mock_process_episodes.return_value = [
-            {
-                "media_id": "1668",
-                "source": Sources.TMDB.value,
-                "media_type": MediaTypes.EPISODE.value,
-                "season_number": 1,
-                "episode_number": 1,
-                "title": "Episode 1",
-                "name": "Episode 1",
-                "air_date": "2023-01-01",
-                "watched": False,
-            },
-        ]
-
-        response = self.client.get(
-            reverse(
-                "season_details",
-                kwargs={
-                    "source": Sources.TMDB.value,
-                    "media_id": "1668",
-                    "title": "test-tv-show",
-                    "season_number": 1,
-                },
-            ),
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "app/media_details.html")
-
-        self.assertIn("media", response.context)
-        self.assertEqual(response.context["media"]["title"], "Season 1")
-        self.assertEqual(len(response.context["media"]["episodes"]), 1)
-        self.assertContains(response, "line-clamp-1 blur cursor-pointer")
-
-        mock_get_metadata.assert_called_once_with(
-            "tv_with_seasons",
-            "1668",
-            Sources.TMDB.value,
-            [1],
-        )
+    def test_season_details_redirect_to_unified_show(self):
+        response = self.client.get(reverse("season_details", args=["tmdb", "1668", "test-tv-show", 1]))
+        self.assertRedirects(response, "/details/tmdb/tv/1668/test-tv-show?season=1#episodes", fetch_redirect_response=False)
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_refreshes_missing_item_image(self, mock_get_metadata):
