@@ -146,7 +146,7 @@ def record(kind, external_id, *, refresh=False):
     )
 
 
-def book(media_id):
+def book(media_id, *, refresh=False):
     """Edition metadata and work relationships, without rewriting tracked records."""
     from app.discovery.free_books import entity_url, related_url
     from app.providers.book_catalogue import request
@@ -155,17 +155,19 @@ def book(media_id):
         services.raise_not_found_error("openlibrary", media_id, "book")
     key = f"openlibrary_book_{media_id}"
     cached = cache.get(key)
-    if cached is not None and cached.get("catalogue_version") == 2:
+    if not refresh and cached is not None and cached.get("catalogue_version") == 2:
         return copy.deepcopy(cached)
-    # Bypass the transport cache when native Refresh metadata invalidates this
-    # assembled record, so a catalogue correction can actually be retrieved.
-    edition, edition_aliases = record("books", media_id, refresh=True)
+    # Reuse successful component requests after a partial failure. Only an
+    # explicit Refresh metadata action bypasses still-fresh catalogue records.
+    edition, edition_aliases = record("books", media_id, refresh=refresh)
     work_ids = [
         extract_openlibrary_id(w.get("key", "")) for w in edition.get("works", [])
     ]
     work_ids = [w for w in work_ids if re.fullmatch(r"OL[0-9]+W", w or "")]
     work_id = work_ids[0] if len(work_ids) == 1 else None
-    work, work_aliases = record("works", work_id, refresh=True) if work_id else ({}, [])
+    work, work_aliases = (
+        record("works", work_id, refresh=refresh) if work_id else ({}, [])
+    )
     if work_aliases:
         work_id = work_aliases[-1]
     contributors = []
@@ -175,7 +177,7 @@ def book(media_id):
         author_id = extract_openlibrary_id(author_key)
         if not re.fullmatch(r"OL[0-9]+A", author_id or ""):
             continue
-        author = request("openlibrary", f"/authors/{author_id}.json")
+        author = request("openlibrary", f"/authors/{author_id}.json", refresh=refresh)
         contributors.append(
             {
                 "name": author.get("name", author_id),
@@ -193,7 +195,9 @@ def book(media_id):
         for name in edition.get("publishers", [])
     ]
     ratings = (
-        request("openlibrary", f"/works/{work_id}/ratings.json").get("summary", {})
+        request("openlibrary", f"/works/{work_id}/ratings.json", refresh=refresh).get(
+            "summary", {}
+        )
         if work_id
         else {}
     )

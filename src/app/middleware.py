@@ -45,13 +45,24 @@ class ProviderAPIErrorMiddleware:
     def process_exception(self, request, exception):
         """Handle exceptions raised during request processing."""
         if isinstance(exception, services.ProviderAPIError):
-            return render(
+            temporary = getattr(exception, "retry_after", None)
+            response = render(
                 request,
                 "500.html",
                 {
-                    "error_message": str(exception),
+                    "error_message": exception.user_message
+                    if temporary
+                    else str(exception),
+                    "error_code": 503 if temporary else 500,
+                    "error_title": "Catalogue Unavailable"
+                    if temporary
+                    else "Something Went Wrong",
                     "provider": exception.provider,
                 },
-                status=500,
+                status=503 if temporary else 500,
             )
+            response["Cache-Control"] = "private, no-store"
+            if temporary:
+                response["Retry-After"] = str(temporary)
+            return response
         return None

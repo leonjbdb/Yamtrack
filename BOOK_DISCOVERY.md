@@ -40,9 +40,18 @@ Series load separately after the main book page. A failed provider call produces
 a visible error and Retry control, not an empty successful result. Public HTTP
 responses are cached (15 minutes for searches, 24 hours for catalogue records).
 Connections and reads are bounded, requests share a Redis rate limit of two per
-second per host, and HTTP 429/503 responses start a shared cooldown. No recursive
-retry loop or provider fallback is used. Native Refresh metadata refreshes the
-selected edition and work. `BOOK_CATALOGUE_USER_AGENT` identifies the deployment.
+second per host. Safe GETs retry temporary connection failures and HTTP 502/503/504
+at most twice, with one/two-second delays and 5-second connection / 10-second read
+timeouts. HTTP 429 and longer Retry-After deadlines are honored immediately;
+Retry-After accepts seconds or an HTTP date. Exhausted transient failures start
+a 15-second shared cooldown; unqualified rate limits use 60 seconds. Continuing
+outages return HTTP 503 with the actual retry delay and private/no-store headers.
+They are never mistaken for a successful empty catalogue or another provider.
+
+A failed composite book load retains successful, fresh component responses for
+the next attempt. Ordinary loads use these caches; native Refresh metadata
+explicitly bypasses edition, work, author and rating caches. Failed/partial
+composite records are never cached as successes. `BOOK_CATALOGUE_USER_AGENT` identifies the deployment.
 Only user-requested interactive requests use Wikimedia's Action API; future bulk
 or background ingestion must use dumps and the appropriate maxlag policy.
 

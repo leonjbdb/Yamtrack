@@ -1,5 +1,5 @@
-import logging
 import copy
+import logging
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -21,21 +21,21 @@ from app import helpers, history_processor
 from app import home as home_helpers
 from app import statistics as stats
 from app.forms import EpisodeForm, ManualItemForm, get_form_class
-from app.release_status import is_unreleased
 from app.models import (
     TV,
     BasicMedia,
     Episode,
+    GameStatus,
     Item,
     MediaTypes,
     Season,
     Sources,
     Status,
-    GameStatus,
-    status_choices,
     UserMessage,
+    status_choices,
 )
-from app.providers import manual, services, tmdb
+from app.providers import manual, openlibrary, services, tmdb
+from app.release_status import is_unreleased
 from app.templatetags import app_tags
 from events.models import Event
 from users.models import (
@@ -463,12 +463,15 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         deleted = cache.delete(cache_key)
         logger.debug("%s - Old cache deleted: %s", cache_key, deleted)
 
-        metadata = services.get_media_metadata(
-            media_type,
-            media_id,
-            source,
-            [season_number],
-        )
+        if source == Sources.OPENLIBRARY.value and media_type == MediaTypes.BOOK.value:
+            metadata = openlibrary.book(media_id, refresh=True)
+        else:
+            metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                [season_number],
+            )
         item, _ = Item.objects.update_or_create(
             media_id=media_id,
             source=source,
@@ -642,12 +645,15 @@ def media_save(request):
     if instance_id:
         instance = helpers.get_owned_media_or_404(request, media_type, instance_id)
     else:
-        metadata = services.get_media_metadata(
-            media_type,
-            media_id,
-            source,
-            [season_number],
-        )
+        if source == Sources.OPENLIBRARY.value and media_type == MediaTypes.BOOK.value:
+            metadata = openlibrary.book(media_id, refresh=True)
+        else:
+            metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                [season_number],
+            )
         item, _ = Item.objects.get_or_create(
             media_id=media_id,
             source=source,
@@ -964,7 +970,7 @@ def delete_history_record(request, media_type, history_id):
 @require_GET
 def statistics(request):
     """A lifetime collection view with a separately scoped activity timeline."""
-    from app.collection_statistics import dashboard, TYPES
+    from app.collection_statistics import TYPES, dashboard
 
     kind = request.GET.get("type", "all")
     if kind not in ["all", *TYPES]:

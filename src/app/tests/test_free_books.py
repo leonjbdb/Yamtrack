@@ -249,7 +249,7 @@ class FreeBookTests(TestCase):
         with self.assertRaises(ProviderAPIError):
             book_catalogue.request("openlibrary", "/search.json", {"q": "Another"})
         self.assertEqual(session.return_value.get.call_count, 1)
-        self.assertEqual(session.return_value.get.call_args.kwargs["timeout"], (5, 20))
+        self.assertEqual(session.return_value.get.call_args.kwargs["timeout"], (5, 10))
         self.assertFalse(session.return_value.get.call_args.kwargs["allow_redirects"])
 
     @patch("app.providers.book_catalogue.session")
@@ -356,3 +356,192 @@ class FreeBookTests(TestCase):
         self.assertContains(retry, "<form")
         self.assertNotContains(retry, "Unable to Load Tracking Form")
         self.assertEqual(Book.objects.count(), 0)
+
+
+class CatalogueReliabilityTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def response(self, status=200, data=None, headers=None):
+        response = Mock(
+            status_code=status,
+            is_redirect=False,
+            headers=headers or {},
+            text=f"HTTP {status}",
+        )
+        response.json.return_value = data or {"title": "Novel"}
+        if status >= 400:
+            response.raise_for_status.side_effect = requests.HTTPError(
+                response=response
+            )
+        return response
+
+    @patch("app.providers.book_catalogue.time.sleep")
+    @patch("app.providers.book_catalogue.session")
+    def test_transient_503_retries_same_endpoint_and_caches_success(
+        self, session, sleep
+    ):
+        session.return_value.get.side_effect = [self.response(503), self.response()]
+        self.assertEqual(
+            book_catalogue.request("openlibrary", "/books/OL1M.json")["title"], "Novel"
+        )
+        self.assertEqual(
+            book_catalogue.request("openlibrary", "/books/OL1M.json")["title"], "Novel"
+        )
+        self.assertEqual(session.return_value.get.call_count, 2)
+        self.assertEqual(
+            session.return_value.get.call_args_list[0],
+            session.return_value.get.call_args_list[1],
+        )
+        sleep.assert_called_once_with(1)
+
+    @patch("app.providers.book_catalogue.time.sleep")
+    @patch("app.providers.book_catalogue.session")
+    def test_outage_is_bounded_and_cooldown_retains_actual_reason(self, session, sleep):
+        session.return_value.get.return_value = self.response(503)
+        with self.assertRaises(book_catalogue.CatalogueUnavailable) as first:
+            book_catalogue.request("openlibrary", "/books/OL1M.json")
+        self.assertEqual(session.return_value.get.call_count, 3)
+        with self.assertRaises(book_catalogue.CatalogueUnavailable) as blocked:
+            book_catalogue.request("openlibrary", "/books/OL1M.json")
+        self.assertEqual(session.return_value.get.call_count, 3)
+        self.assertEqual(first.exception.status_code, 503)
+        self.assertEqual(blocked.exception.status_code, 503)
+        self.assertIn("temporarily unavailable", blocked.exception.user_message)
+        self.assertNotIn("rate limit", blocked.exception.user_message)
+
+    @patch("app.providers.book_catalogue.time.sleep")
+    @patch("app.providers.book_catalogue.session")
+    def test_retry_after_is_honored_without_immediate_requests(self, session, sleep):
+        session.return_value.get.return_value = self.response(
+            503, headers={"Retry-After": "90"}
+        )
+        with self.assertRaises(book_catalogue.CatalogueUnavailable) as error:
+            book_catalogue.request("openlibrary", "/books/OL1M.json")
+        self.assertEqual(error.exception.retry_after, 90)
+        self.assertEqual(session.return_value.get.call_count, 1)
+        sleep.assert_not_called()
+        from email.utils import formatdate
+
+        with patch("app.providers.book_catalogue.time.time", return_value=1000):
+            self.assertEqual(
+                book_catalogue.retry_delay(
+                    self.response(
+                        headers={"Retry-After": formatdate(1045, usegmt=True)}
+                    )
+                ),
+                45,
+            )
+
+    @patch("app.providers.book_catalogue.time.sleep")
+    @patch("app.providers.book_catalogue.session")
+    def test_connection_reset_retries_but_missing_records_do_not(self, session, sleep):
+        session.return_value.get.side_effect = [
+            requests.ConnectionError("reset"),
+            self.response(),
+        ]
+        self.assertEqual(
+            book_catalogue.request("openlibrary", "/books/OL1M.json")["title"], "Novel"
+        )
+        session.return_value.get.side_effect = None
+        session.return_value.get.return_value = self.response(404)
+        with self.assertRaises(ProviderAPIError):
+            book_catalogue.request("openlibrary", "/books/OL2M.json")
+        self.assertEqual(session.return_value.get.call_count, 3)
+
+    @patch("app.providers.book_catalogue.time.sleep")
+    @patch("app.providers.book_catalogue.session")
+    def test_partial_book_failure_reuses_successful_components_on_retry(
+        self, session, sleep
+    ):
+        edition = {
+            "title": "The Fellowship of the Ring",
+            "works": [{"key": "/works/OL27513W"}],
+        }
+        work = {"title": "The Fellowship of the Ring"}
+        session.return_value.get.side_effect = [
+            self.response(data=edition),
+            self.response(data=work),
+            *[self.response(503) for _ in range(3)],
+        ]
+        with self.assertRaises(book_catalogue.CatalogueUnavailable):
+            openlibrary.book("OL26449223M")
+        self.assertIsNone(cache.get("openlibrary_book_OL26449223M"))
+        # Advance beyond the circuit deadline; successful edition/work responses
+        # stay fresh. Only the failed ratings request should run again.
+        cache.delete("free-books:cooldown:v2:openlibrary")
+        session.return_value.get.side_effect = [
+            self.response(data={"summary": {"average": 4, "count": 10}})
+        ]
+        result = openlibrary.book("OL26449223M")
+        self.assertEqual(result["title"], edition["title"])
+        self.assertEqual(session.return_value.get.call_count, 6)
+        self.assertTrue(
+            session.return_value.get.call_args.args[0].endswith("/ratings.json")
+        )
+        self.assertEqual(result["score"], 8)
+
+    @patch("app.providers.book_catalogue.request")
+    def test_explicit_refresh_bypasses_all_component_caches(self, request):
+        request.side_effect = [
+            {"title": "Corrected edition", "works": [{"key": "/works/OL1W"}]},
+            {"authors": [{"author": {"key": "/authors/OL1A"}}]},
+            {"name": "Author"},
+            {"summary": {}},
+        ]
+        cache.set(
+            "openlibrary_book_OL1M", {"catalogue_version": 2, "title": "Old title"}
+        )
+        self.assertEqual(
+            openlibrary.book("OL1M", refresh=True)["title"], "Corrected edition"
+        )
+        self.assertTrue(all(call.kwargs["refresh"] for call in request.call_args_list))
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_detail_outage_uses_503_with_retry_after_and_clear_reason(self, metadata):
+        user = get_user_model().objects.create_user(username="outage-reader")
+        self.client.force_login(user)
+        metadata.side_effect = book_catalogue.CatalogueUnavailable(
+            "openlibrary", requests.Timeout("timeout"), 15, 503
+        )
+        response = self.client.get(
+            reverse(
+                "media_details",
+                args=[
+                    "openlibrary",
+                    "book",
+                    "OL26449223M",
+                    "the-fellowship-of-the-ring",
+                ],
+            )
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response["Retry-After"], "15")
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertContains(response, "Catalogue Unavailable", status_code=503)
+        self.assertContains(response, "Try again in 15 seconds", status_code=503)
+        self.assertNotContains(response, "(network error)", status_code=503)
+
+    @patch("app.views.Item.fetch_releases")
+    @patch("app.views.openlibrary.book")
+    @patch("app.views.cache")
+    def test_native_metadata_refresh_explicitly_refreshes_openlibrary(
+        self, view_cache, book, releases
+    ):
+        view_cache.ttl.return_value = None
+        user = get_user_model().objects.create_user(username="refresh-reader")
+        self.client.force_login(user)
+        book.return_value = {
+            "title": "Corrected title",
+            "image": "https://example.org/book.jpg",
+        }
+        response = self.client.post(
+            reverse("sync_metadata", args=["openlibrary", "book", "OL26449223M"]),
+            {"next": "/"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 204)
+        book.assert_called_once_with("OL26449223M", refresh=True)
+        self.assertEqual(
+            Item.objects.get(media_id="OL26449223M").title, "Corrected title"
+        )
