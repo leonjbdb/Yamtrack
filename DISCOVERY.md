@@ -39,8 +39,9 @@ Ranking weights enforce the following precedence:
 | Other provider matches | 200 |
 
 Aliases receive a 20-point penalty relative to title matches. Provider order adds
-at most five points, including results from corrected-word queries, so it cannot
-move a fuzzy result above an exact title. Subtitle length is only a weak penalty;
+at most five points, including results from corrected-word queries. Matches from
+the submitted query receive another five-point preference over expansion results
+of equal textual quality. Neither bonus can move a fuzzy result above an exact title. Subtitle length is only a weak penalty;
 it must not bury relevant feature films below short documentary titles. Case,
 punctuation and accents are normalized. Damerau-Levenshtein matching supports
 insertions, deletions, substitutions and adjacent transpositions: no typo for

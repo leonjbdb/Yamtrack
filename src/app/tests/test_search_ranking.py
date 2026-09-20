@@ -64,6 +64,14 @@ class SearchRankingTests(TestCase):
         self.assertEqual(ranked[0]["external_id"], "1")
         self.assertEqual(len(ranked), 2)
 
+    def test_expansion_does_not_promote_equal_matches_over_original_provider_order(
+        self,
+    ):
+        direct = [row("Alien", 1), row("Alien: Romulus", 2)]
+        expanded = [{**row("Alien Babes", 3), "_provider_order": 0}]
+        ranked = merge_ranked("Alien", direct, expanded)
+        self.assertEqual([r["external_id"] for r in ranked], ["1", "2", "3"])
+
     def test_short_typo_and_transposition_find_unseen_direct_results(self):
         remember([row("Alien", 1), row("Aliens", 2), row("The Alienist", 3)])
         matches = close_matches("Alen", ["movie"], ["tmdb"])

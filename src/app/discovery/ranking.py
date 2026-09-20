@@ -117,7 +117,7 @@ def merge_ranked(query, direct, indexed):
     merged = {}
     for position, row in enumerate(direct):
         identity = (row["source"], row["kind"], str(row["external_id"]))
-        merged[identity] = dict(row, _provider_order=position)
+        merged[identity] = dict(row, _provider_order=position, _direct=True)
     for row in indexed:
         identity = (row["source"], row["kind"], str(row["external_id"]))
         if identity not in merged:
@@ -138,7 +138,11 @@ def merge_ranked(query, direct, indexed):
         relevance = score(query, row)
         # Provider relevance orders aliases and other provider matches that do
         # not literally occur in the displayed title. It cannot outrank text.
-        weight = (relevance if relevance else 200) + 5 / (1 + row["_provider_order"])
+        weight = (
+            (relevance if relevance else 200)
+            + (5 if row.get("_direct") else 0)
+            + 5 / (1 + row["_provider_order"])
+        )
         return (-weight, len(row["name"]), row["name"].casefold(), row["external_id"])
 
     return sorted(merged.values(), key=order)
