@@ -58,6 +58,8 @@ def media_rows(rows):
             "name": r["title"],
             "image": r["image"],
             "aliases": r.get("aliases", []),
+            "work_id": r.get("work_id"),
+            "edition_ids": r.get("edition_ids", []),
         }
         for r in rows
     ]
@@ -83,6 +85,11 @@ def fetch_category(category, query, page, source):
 
 def candidates(category, query, rows, source, kinds):
     indexed = close_matches(query, kinds, [source] if source else None, limit=80)
+    if category == "all":
+        book_source = config.get_default_source_name("book").value
+        indexed = [
+            r for r in indexed if r["kind"] != "book" or r["source"] == book_source
+        ]
     # Search corrected words as well as the literal query. An indexed original
     # must lead to unindexed sequels, not stop retrieval at the first good hit.
     if category != "networks":
@@ -152,7 +159,7 @@ def all_results(user, query):
         settings.TMDB_NSFW,
         settings.IGDB_NSFW,
     ]
-    key = "search:ranked:v3:" + hashlib.sha256(repr(identity).encode()).hexdigest()
+    key = "search:ranked:v4:" + hashlib.sha256(repr(identity).encode()).hexdigest()
     result = cache.get(key)
     if result is not None:
         return copy.deepcopy(result)

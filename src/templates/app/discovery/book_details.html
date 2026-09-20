@@ -2,9 +2,12 @@
 <div x-show="tab === 'overview' || tab === 'books'">
   {% if media.book_links.contributors %}
   <section class="mb-8"><h2 class="text-xl font-bold mb-4">Contributors</h2>
-    <div class="credit-chips">{% for person in media.book_links.contributors %}<a href="{{ person.url }}">{{ person.name }} <span class="text-gray-400">· {{ person.role }}</span></a>{% endfor %}</div>
+    <div class="credit-chips">{% for person in media.book_links.contributors %}{% if person.url %}<a href="{{ person.url }}">{{ person.name }} <span class="text-gray-400">· {{ person.role }}</span></a>{% else %}<span>{{ person.name }} · {{ person.role }}</span>{% endif %}{% endfor %}</div>
   </section>{% endif %}
   {% if media.book_links.publisher %}<p class="mb-6 text-sm">Publisher: <a class="text-indigo-400 hover:underline" href="{{ media.book_links.publisher.url }}">{{ media.book_links.publisher.name }}</a></p>{% endif %}
+  {% if media.book_links.publishers %}<p class="mb-6 text-sm">Publishers: {% for publisher in media.book_links.publishers %}<a class="text-indigo-400 hover:underline" href="{{ publisher.url }}">{{ publisher.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  {% if media.book_editions_url %}<p class="mb-6"><a class="text-indigo-400 hover:underline" href="{{ media.book_editions_url }}">Other editions</a></p>{% endif %}
+  {% if media.book_related_url %}<div hx-get="{{ media.book_related_url }}" hx-trigger="load" hx-swap="outerHTML"><p class="text-gray-400 mb-4" role="status">Loading series…</p></div>{% endif %}
   {% for series in media.book_series %}
     <section class="mb-8" aria-label="{{ series.name }} series">
       <h2 class="text-xl font-bold mb-2"><a class="hover:text-indigo-400" href="{{ series.url }}">{{ series.name }}</a>{% if series.position %} <span class="text-gray-400 text-base">· Book {{ series.position }}</span>{% endif %}</h2>

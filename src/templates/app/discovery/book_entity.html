@@ -4,6 +4,7 @@
 {% block content %}
 <a class="text-sm text-indigo-400" href="{% url 'search' %}?media_type=book">← Search</a>
 <header class="mb-6 mt-4"><h1 class="text-2xl font-bold">{{ entity.name }}</h1>{% if entity.description %}<details class="credit-biography"><summary>About {{ entity.name }}</summary><p>{{ entity.description|linebreaksbr }}</p></details>{% endif %}</header>
+{% if entity.source_url %}<p class="text-sm text-gray-400 mb-4">Source: <a class="text-indigo-400 hover:underline" href="{{ entity.source_url }}" rel="noopener" target="_blank">{% if kind == "series" %}Wikidata{% else %}Open Library{% endif %}</a></p>{% endif %}
 <nav class="credit-chips" aria-label="Book filters">{% for chip in filters %}<a href="{{ chip.url }}" {% if chip.active %}aria-current="page"{% endif %}>{{ chip.label }}</a>{% endfor %}</nav>
 <nav class="credit-chips" aria-label="Result layout">{% for chip in layout_filters %}<a href="{{ chip.url }}" {% if chip.active %}aria-current="page"{% endif %}>{{ chip.label }}</a>{% endfor %}</nav>
 {% if entity.results %}{% include 'app/discovery/results.html' with results=entity.results %}{% else %}<p class="text-gray-400">No books found.</p>{% endif %}

@@ -1,23 +1,21 @@
-import asyncio
+import copy
 import logging
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import aiohttp
-import requests
 from bs4 import BeautifulSoup
 from django.conf import settings
 from django.core.cache import cache
 
 from app import helpers
-from app.models import MediaTypes, Sources
+from app.models import Sources
 from app.providers import services
 
 logger = logging.getLogger(__name__)
 
 base_url = "https://openlibrary.org/api"
 search_url = "https://openlibrary.org/search.json"
-headers = {"User-Agent": "Yamtrack/1.0 (github@fuzzygrim.com)"}
 
 
 def handle_error(error):
@@ -28,67 +26,62 @@ def handle_error(error):
     )
 
 
-def search(query, page):
-    """Search for books on Open Library."""
-    cache_key = (
-        f"search_{Sources.OPENLIBRARY.value}_{MediaTypes.BOOK.value}_{query}_{page}"
-    )
-    data = cache.get(cache_key)
+SEARCH_FIELDS = "key,title,author_name,edition_key,editions,editions.key,editions.title,editions.cover_i,editions.language"
 
-    if data is None:
-        params = {
+
+def search_data(query, page=1, limit=None):
+    from app.providers.book_catalogue import request
+
+    return request(
+        "openlibrary",
+        "/search.json",
+        {
             "q": query,
-            "fields": "title,key,editions,editions.key,editions.cover_i,editions.title",
-            "limit": settings.PER_PAGE,
+            "lang": settings.BOOK_LANGUAGE,
+            "fields": SEARCH_FIELDS,
+            "limit": limit or settings.PER_PAGE,
             "page": page,
-        }
+        },
+        ttl=900,
+    )
 
-        try:
-            response = services.api_request(
-                Sources.OPENLIBRARY.value,
-                "GET",
-                search_url,
-                params=params,
-                headers=headers,
-            )
-        except requests.RequestException as e:
-            handle_error(e)
 
-        results = []
-        for doc in response.get("docs", []):
-            if doc["editions"]["docs"] == []:
-                continue
-
-            top_edition = doc["editions"]["docs"][0]
-            media_id = extract_openlibrary_id(top_edition["key"])
-            title = doc["title"]
-            edition_title = top_edition["title"]
-
-            if edition_title != title:
-                result_title = f"{edition_title}: {title}"
-            else:
-                result_title = title
-
-            results.append(
-                {
-                    "media_id": media_id,
-                    "source": Sources.OPENLIBRARY.value,
-                    "media_type": MediaTypes.BOOK.value,
-                    "title": result_title,
-                    "image": get_image_url(top_edition),
-                },
-            )
-
-        total_results = response["numFound"]
-        data = helpers.format_search_response(
-            page,
-            settings.PER_PAGE,
-            total_results,
-            results,
+def search_items(data):
+    results = []
+    for doc in data.get("docs", []):
+        editions = (doc.get("editions") or {}).get("docs") or []
+        if not editions:
+            continue
+        edition = editions[0]
+        media_id = extract_openlibrary_id(edition.get("key", ""))
+        if not re.fullmatch(r"OL[0-9]+M", media_id or "") or not edition.get("title"):
+            continue
+        results.append(
+            {
+                "media_id": media_id,
+                "source": "openlibrary",
+                "media_type": "book",
+                "title": edition["title"],
+                "image": get_image_url(edition),
+                "work_id": extract_openlibrary_id(doc.get("key", "")),
+                "edition_ids": doc.get("edition_key") or [media_id],
+                "aliases": [doc["title"]]
+                if doc.get("title") != edition["title"]
+                else [],
+            }
         )
+    return results
 
-        cache.set(cache_key, data)
-    return data
+
+def search(query, page):
+    """Search works while selecting one internally consistent edition per work."""
+    data = search_data(query, page)
+    return helpers.format_search_response(
+        page,
+        settings.PER_PAGE,
+        data["numFound"],
+        search_items(data),
+    )
 
 
 def extract_openlibrary_id(path):
@@ -116,90 +109,131 @@ def get_image_url(doc):
             return f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
 
     except KeyError:
-        return settings.IMG_NONE
+        pass
+    return settings.IMG_NONE
+
+
+def record(kind, external_id, *, refresh=False):
+    """Follow explicit same-kind catalogue merges, retaining identifier aliases."""
+    from app.providers.book_catalogue import request
+
+    suffix = {"works": "W", "books": "M", "authors": "A"}[kind]
+    seen = []
+    current = external_id
+    for _ in range(5):
+        if not re.fullmatch(r"OL[0-9]+" + suffix, current or "") or current in seen:
+            raise services.ProviderAPIError(
+                "openlibrary", ValueError("Invalid catalogue redirect")
+            )
+        seen.append(current)
+        data = request("openlibrary", f"/{kind}/{current}.json", refresh=refresh)
+        if data.get("type", {}).get("key") != "/type/redirect":
+            return data, seen
+        location = data.get("location", "")
+        if not location.startswith(f"/{kind}/"):
+            raise services.ProviderAPIError(
+                "openlibrary", ValueError("Invalid catalogue redirect")
+            )
+        current = location.removeprefix(f"/{kind}/")
+    raise services.ProviderAPIError(
+        "openlibrary", ValueError("Catalogue redirect limit reached")
+    )
 
 
 def book(media_id):
-    """Get metadata for a book from Open Library."""
-    return asyncio.run(async_book(media_id))
+    """Edition metadata and work relationships, without rewriting tracked records."""
+    from app.discovery.free_books import entity_url, related_url
+    from app.providers.book_catalogue import request
 
-
-async def async_book(media_id):
-    """Asynchronous implementation of book metadata retrieval."""
-    cache_key = f"{Sources.OPENLIBRARY.value}_{MediaTypes.BOOK.value}_{media_id}"
-    data = cache.get(cache_key)
-
-    if data is None:
-        book_url = f"https://openlibrary.org/books/{media_id}.json"
-
-        try:
-            response_book = services.api_request(
-                Sources.OPENLIBRARY.value,
-                "GET",
-                book_url,
-                headers=headers,
+    if not re.fullmatch(r"OL[0-9]+M", str(media_id)):
+        services.raise_not_found_error("openlibrary", media_id, "book")
+    key = f"openlibrary_book_{media_id}"
+    cached = cache.get(key)
+    if cached is not None and cached.get("catalogue_version") == 2:
+        return copy.deepcopy(cached)
+    # Bypass the transport cache when native Refresh metadata invalidates this
+    # assembled record, so a catalogue correction can actually be retrieved.
+    edition, edition_aliases = record("books", media_id, refresh=True)
+    work_ids = [
+        extract_openlibrary_id(w.get("key", "")) for w in edition.get("works", [])
+    ]
+    work_ids = [w for w in work_ids if re.fullmatch(r"OL[0-9]+W", w or "")]
+    work_id = work_ids[0] if len(work_ids) == 1 else None
+    work, work_aliases = record("works", work_id, refresh=True) if work_id else ({}, [])
+    if work_aliases:
+        work_id = work_aliases[-1]
+    contributors = []
+    author_refs = edition.get("authors") or work.get("authors") or []
+    for reference in author_refs:
+        author_key = (reference.get("author") or reference).get("key", "")
+        author_id = extract_openlibrary_id(author_key)
+        if not re.fullmatch(r"OL[0-9]+A", author_id or ""):
+            continue
+        author = request("openlibrary", f"/authors/{author_id}.json")
+        contributors.append(
+            {
+                "name": author.get("name", author_id),
+                "role": "Author",
+                "url": entity_url("author", author_id),
+            }
+        )
+    for credit in edition.get("contributions") or []:
+        if isinstance(credit, dict) and credit.get("name"):
+            contributors.append(
+                {"name": credit["name"], "role": credit.get("role") or "Contributor"}
             )
-        except requests.RequestException as e:
-            handle_error(e)
-
-        works = response_book.get("works", [])
-        if works:
-            work = works[0]
-            work_id = extract_openlibrary_id(work["key"])
-            work_url = f"https://openlibrary.org/works/{work_id}.json"
-
-            try:
-                response_work = services.api_request(
-                    Sources.OPENLIBRARY.value,
-                    "GET",
-                    work_url,
-                    headers=headers,
-                )
-            except requests.RequestException as e:
-                handle_error(e)
-        else:
-            response_work = {}
-
-        # Run authors, editions, and ratings concurrently
-        authors_task = asyncio.create_task(
-            get_authors(response_work),
-        )
-        editions_task = asyncio.create_task(
-            get_editions(response_book, response_work),
-        )
-        ratings_task = asyncio.create_task(
-            get_ratings(response_work),
-        )
-        score, score_count = await ratings_task
-
-        data = {
-            "media_id": media_id,
-            "source": Sources.OPENLIBRARY.value,
-            "source_url": f"https://openlibrary.org/books/{media_id}",
-            "media_type": MediaTypes.BOOK.value,
-            "title": response_book["title"],
-            "max_progress": response_book.get("number_of_pages"),
-            "image": get_cover_image_url(response_book),
-            "synopsis": get_description(response_book, response_work),
-            "genres": get_subjects(response_work),
-            "score": score,
-            "score_count": score_count,
-            "details": {
-                "physical_format": get_physical_format(response_book),
-                "number_of_pages": response_book.get("number_of_pages"),
-                "publish_date": get_publish_date(response_book),
-                "author": await authors_task,
-                "publishers": get_publishers(response_book),
-                "isbn": get_isbns(response_book),
-            },
-            "related": {
-                "other_editions": await editions_task,
-            },
-        }
-
-        cache.set(cache_key, data)
-
-    return data
+    publishers = [
+        {"name": name, "url": entity_url("publisher", "books", name=name)}
+        for name in edition.get("publishers", [])
+    ]
+    ratings = (
+        request("openlibrary", f"/works/{work_id}/ratings.json").get("summary", {})
+        if work_id
+        else {}
+    )
+    data = {
+        "catalogue_version": 2,
+        "media_id": media_id,
+        "source": "openlibrary",
+        "source_url": f"https://openlibrary.org/books/{media_id}",
+        "media_type": "book",
+        "title": edition["title"],
+        "max_progress": edition.get("number_of_pages"),
+        "image": get_cover_image_url(edition),
+        "synopsis": get_description(edition, work),
+        "genres": get_subjects(work),
+        "score": round(ratings["average"] * 2, 1)
+        if ratings.get("average") is not None
+        else None,
+        "score_count": ratings.get("count"),
+        "details": {
+            "physical_format": get_physical_format(edition),
+            "number_of_pages": edition.get("number_of_pages"),
+            "publish_date": get_publish_date(edition),
+            "author": [c["name"] for c in contributors if c["role"] == "Author"]
+            or None,
+            "publishers": get_publishers(edition),
+            "isbn": get_isbns(edition),
+            "language": [
+                x["key"].rsplit("/", 1)[-1]
+                for x in edition.get("languages", [])
+                if x.get("key")
+            ],
+        },
+        "work_id": work_id,
+        "work_aliases": work_aliases,
+        "edition_aliases": edition_aliases,
+        "book_links": {
+            "contributors": contributors,
+            "publishers": publishers,
+            "series": [],
+        },
+        "book_related_url": related_url(media_id),
+        "book_editions_url": entity_url("editions", work_id) if work_id else None,
+        "related": {},
+    }
+    cache.set(key, data)
+    return copy.deepcopy(data)
 
 
 def get_cover_image_url(response):
@@ -263,36 +297,6 @@ def get_publish_date(response):
     return None
 
 
-async def get_authors(response):
-    """Get list of author names asynchronously."""
-    authors = []
-    author_entries = response.get("authors", [])
-
-    async with aiohttp.ClientSession(headers=headers) as session:
-        tasks = []
-        for author in author_entries:
-            if isinstance(author, dict) and "author" in author:
-                author_key = author["author"]["key"]
-                author_url = f"https://openlibrary.org{author_key}.json"
-                tasks.append(fetch_author_data(session, author_url))
-
-        author_data_list = await asyncio.gather(*tasks)
-        authors = [
-            data.get("name", "Unknown Author") for data in author_data_list if data
-        ]
-
-    return authors or None
-
-
-async def fetch_author_data(session, url):
-    """Fetch author data asynchronously."""
-    async with session.get(url) as response:
-        if response.status == requests.codes.ok:
-            return await response.json()
-
-    return None
-
-
 def get_subjects(response):
     """Get list of subjects/genres."""
     if "subjects" in response:
@@ -315,64 +319,3 @@ def get_isbns(response):
     if isbns:
         return isbns
     return None
-
-
-async def get_editions(response_book, response_work):
-    """Get list of editions asynchronously."""
-    book_id = extract_openlibrary_id(response_book.get("key", ""))
-    work_id = extract_openlibrary_id(response_work.get("key", ""))
-
-    if not work_id:
-        work_id = book_id
-
-    # limit to 500 editions, pagination is not supported
-    url = f"https://openlibrary.org/works/{work_id}/editions.json?limit=500"
-
-    async with (
-        aiohttp.ClientSession(headers=headers) as session,
-        session.get(url) as response,
-    ):
-        if response.status == requests.codes.ok:
-            data = await response.json()
-            return [
-                {
-                    "source": Sources.OPENLIBRARY.value,
-                    "source_url": f"https://openlibrary.org/books/{extract_openlibrary_id(edition['key'])}",
-                    "media_id": extract_openlibrary_id(edition["key"]),
-                    "media_type": MediaTypes.BOOK.value,
-                    "title": edition.get("title"),
-                    "image": get_cover_image_url(edition),
-                }
-                for edition in data["entries"]
-                if extract_openlibrary_id(edition["key"]) != book_id
-                and edition.get("title")
-            ]
-    return []
-
-
-async def get_ratings(response_work):
-    """Get ratings data for a book asynchronously."""
-    work_id = extract_openlibrary_id(response_work.get("key", ""))
-
-    if not work_id:
-        return None, None
-
-    url = f"https://openlibrary.org/works/{work_id}/ratings.json"
-
-    async with (
-        aiohttp.ClientSession(headers=headers) as session,
-        session.get(url) as response,
-    ):
-        if response.status == requests.codes.ok:
-            data = await response.json()
-            summary = data.get("summary", {})
-            average = summary.get("average")
-            count = summary.get("count")
-
-            if average and count:
-                # Convert to 10-point scale (multiply by 2) and round to 1 decimal place
-                score = round(summary["average"] * 2, 1)
-                score_count = summary["count"]
-                return score, score_count
-
-    return None, 0

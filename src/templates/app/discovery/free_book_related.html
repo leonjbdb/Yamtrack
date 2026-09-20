@@ -1,0 +1,13 @@
+<div>
+  {% if error %}<p class="text-red-400 mb-3" role="alert">Series could not be loaded. {{ error }}</p><button class="text-indigo-400 hover:underline mb-6" hx-get="{{ related_url }}" hx-target="closest div" hx-swap="outerHTML">Retry</button>
+  {% else %}
+    {% for series in sections %}
+    <section class="mb-8" aria-label="{{ series.name }} series">
+      <h2 class="text-xl font-bold mb-2"><a class="hover:text-indigo-400" href="{{ series.url }}">{{ series.name }}</a>{% if series.position %} <span class="text-gray-400 text-base">· Book {{ series.position }}</span>{% endif %}</h2>
+      <p class="text-sm text-gray-400 mb-4">{{ series.total }} numbered books · <a class="text-indigo-400 hover:underline" href="{{ series.url }}">View series</a></p>
+      {% include 'app/discovery/results.html' with results=series.results layout='grid' card_namespace=series.id %}
+    </section>
+    {% empty %}<p class="text-sm text-gray-400 mb-4">No series information available.</p>{% endfor %}
+    {% if source_url %}<p class="text-sm text-gray-400 mb-6">Series source: <a class="text-indigo-400 hover:underline" href="{{ source_url }}" target="_blank" rel="noopener">Wikidata</a></p>{% endif %}
+  {% endif %}
+</div>

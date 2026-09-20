@@ -59,6 +59,10 @@ def enrich_cards(request, rows):
             continue
         grouped.setdefault((row["source"], row["kind"]), []).append(row)
     for (source, kind), group in grouped.items():
+        if source == "openlibrary" and kind == "book":
+            from app.discovery.free_books import prefer_tracked_editions
+
+            prefer_tracked_editions(request.user, group)
         items = [
             {
                 "source": source,

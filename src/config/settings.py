@@ -668,3 +668,10 @@ CELERY_BEAT_SCHEDULE["index-public-discovery-catalogue"] = {
     "task": "app.discovery.tasks.index_catalogue_credits",
     "schedule": crontab(hour=3, minute=15),
 }
+
+# Public book catalogues; no credentials, billing or paid endpoints.
+BOOK_LANGUAGE = config("BOOK_LANGUAGE", default="en")
+BOOK_CATALOGUE_USER_AGENT = config(
+    "BOOK_CATALOGUE_USER_AGENT",
+    default="Yamtrack (https://github.com/leonjbdb/Yamtrack)",
+)

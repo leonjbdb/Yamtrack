@@ -3,6 +3,7 @@ from django.urls import path, register_converter
 from app import converters, views
 from app.discovery import views as discovery_views
 from app.discovery import books as book_views
+from app.discovery import free_books as free_book_views
 
 register_converter(converters.MediaTypeChecker, "media_type")
 register_converter(converters.SourceChecker, "source")
@@ -13,6 +14,16 @@ urlpatterns = [
     path("<str:username>/<media_type:media_type>", views.media_list, name="medialist"),
     path("search", views.media_search, name="search"),
     path("discover", discovery_views.search, name="discover"),
+    path(
+        "books/openlibrary/related/<str:media_id>",
+        free_book_views.related,
+        name="free_book_related",
+    ),
+    path(
+        "books/openlibrary/<str:kind>/<str:external_id>",
+        free_book_views.entity,
+        name="free_book_entity",
+    ),
     path("books/<str:kind>/<int:external_id>", book_views.entity, name="book_entity"),
     path(
         "discover/<str:source>/<str:kind>/<int:external_id>",
