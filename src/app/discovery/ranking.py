@@ -99,7 +99,9 @@ def name_score(query, name):
     matched = matched_tokens(query, name)
     if matched is None:
         return 0
-    return max(400, 600 - matched[0] - min(100, (len(target) - len(words)) * 10))
+    # Extra subtitle words are weak evidence, not ten points per word: a short
+    # documentary title must not bury a relevant feature film or game sequel.
+    return max(400, 600 - matched[0] - min(10, (len(target) - len(words)) * 0.25))
 
 
 def score(query, row):
@@ -119,8 +121,13 @@ def merge_ranked(query, direct, indexed):
     for row in indexed:
         identity = (row["source"], row["kind"], str(row["external_id"]))
         if identity not in merged:
-            merged[identity] = dict(row, _provider_order=10000)
+            merged[identity] = dict(
+                row, _provider_order=row.get("_provider_order", 10000)
+            )
         else:
+            merged[identity]["_provider_order"] = min(
+                merged[identity]["_provider_order"], row.get("_provider_order", 10000)
+            )
             merged[identity]["aliases"] = list(
                 dict.fromkeys(
                     [*merged[identity].get("aliases", []), *row.get("aliases", [])]

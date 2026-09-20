@@ -53,6 +53,17 @@ class SearchRankingTests(TestCase):
         self.assertEqual(ranked[0]["external_id"], "1")
         self.assertEqual(len(ranked), 2)
 
+    def test_provider_relevance_survives_corrected_queries_and_long_subtitles(self):
+        film = {
+            **row("Harry Potter and the Philosopher's Stone", 1),
+            "_provider_order": 0,
+        }
+        extra = {**row("Harry Potter: Fireplace", 2), "_provider_order": 15}
+        indexed = [row(film["name"], 1), row(extra["name"], 2), film, extra]
+        ranked = merge_ranked("Hary Poter", [], indexed)
+        self.assertEqual(ranked[0]["external_id"], "1")
+        self.assertEqual(len(ranked), 2)
+
     def test_short_typo_and_transposition_find_unseen_direct_results(self):
         remember([row("Alien", 1), row("Aliens", 2), row("The Alienist", 3)])
         matches = close_matches("Alen", ["movie"], ["tmdb"])

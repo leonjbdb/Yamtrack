@@ -108,7 +108,11 @@ def candidates(category, query, rows, source, kinds):
         for target_category, probe, target_source in probes:
             extra = fetch_category(target_category, probe, 1, target_source)["results"]
             remember(extra)
-            indexed.extend(row for row in extra if score(query, row) >= 400)
+            indexed.extend(
+                dict(row, _provider_order=position)
+                for position, row in enumerate(extra)
+                if score(query, row) >= 400
+            )
     # Ask for a short public prefix only if there is no useful textual match.
     # This can find an unindexed typo without replacing the submitted query.
     if (
@@ -128,7 +132,11 @@ def candidates(category, query, rows, source, kinds):
             if probe != normalize(query):
                 extra = fetch_category(category, probe, 1, source)["results"]
                 remember(extra)
-                indexed.extend(row for row in extra if score(query, row) >= 400)
+                indexed.extend(
+                    dict(row, _provider_order=position)
+                    for position, row in enumerate(extra)
+                    if score(query, row) >= 400
+                )
         indexed.extend(
             close_matches(query, kinds, [source] if source else None, limit=80)
         )
